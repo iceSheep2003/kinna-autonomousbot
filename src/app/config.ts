@@ -9,10 +9,14 @@ export const ConfigSchema = z.object({
     executions: z.number().int().min(1).max(100).optional(), schedules: z.number().int().min(1).max(100).optional(),
     dreamBatch: z.number().int().min(1).max(200).optional(),
   }).optional(),
-  identity: z.string().min(1).default('一个诚实、好奇、尊重他人边界的自主探索者'),
-  tendencies: z.array(z.string()).default(['了解新的知识', '建立有来有往的关系', '反思并修正自己的判断']),
+  identity: z.string().min(1).default('群里一个记性不错、会替人留心的常驻伙伴'),
+  tendencies: z.array(z.string()).default([
+    '记住谁说过什么、最近过得怎么样',
+    '有来有往，别光顾着自己说',
+    '答应过别人的事要兑现，没做到就老实记下来',
+  ]),
   boundaries: z.object({
-    allowedTools: z.array(z.string()).default(['memory.search', 'experience.read', 'self.note']),
+    allowedTools: z.array(z.string()).default(['memory.search', 'experience.read', 'self.note', 'group.say']),
     maxModelCallsPerHour: z.number().int().min(1).default(60),
     maxExecutionSteps: z.number().int().min(1).default(12),
     maxPendingJobs: z.number().int().min(8).default(100),

@@ -100,7 +100,9 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const worker = new Worker({
     transaction: r.transaction, repository: r.runtime, jobs: r.jobs,
     initialize: now => {
-      if (subject.initialize(options.identity, options.tendencies, now)) inbox.notify('initialized', { reason: 'You can explore; no assigned task.' }, now);
+      if (subject.initialize(options.identity, options.tendencies, now)) {
+        inbox.notify('initialized', { reason: '你刚来到这个群，还不认识谁。先看看最近大家都在聊什么；有想说的就说，没想说的也不用勉强。' }, now);
+      }
     },
     due: now => scheduler.fireDue(now),
     periodic: [

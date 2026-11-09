@@ -6,7 +6,7 @@ import { sqliteAdmin } from './infrastructure/sqlite/admin.js';
 import { composeAgent } from './app/agent.js';
 import { ConfigSchema } from './app/config.js';
 import { CapabilityRegistry } from './capabilities/registry.js';
-import { registerBraveSearch, registerMemory, registerNotes } from './integrations/builtin.js';
+import { registerBraveSearch, registerConversation, registerMemory, registerNotes } from './integrations/builtin.js';
 import { OpenAICompatibleModel } from './infrastructure/models/openai-compatible.js';
 import { createDreamLock } from './infrastructure/locks/dream-lock.js';
 import { createServer } from './infrastructure/http/server.js';
@@ -34,6 +34,7 @@ const model = new OpenAICompatibleModel({ baseUrl: process.env.LLM_BASE_URL ?? '
 const agent = composeAgent(repositories, model, capabilities, { ...config, dreamLock: createDreamLock(resolve(process.env.DREAM_LOCK_PATH ?? 'data/dream.lock')) });
 registerMemory(capabilities, agent.memory, agent.experience);
 registerNotes(capabilities, agent.experience);
+registerConversation(capabilities, agent.experience);
 capabilities.validate(config.boundaries.allowedTools, config.boundaries.allowedTools);
 const runtime = agent.runtime;
 runtime.start();

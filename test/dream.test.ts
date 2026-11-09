@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { LanguageModel, ModelRequest } from '../src/shared/model.js';
 import type { DreamLock, DreamState, DreamStateRepository, ExperienceLog, MemoryRepository } from '../src/memory/ports.js';
-import type { Experience, Memory } from '../src/memory/types.js';
+import type { DreamVersion, Experience, Memory } from '../src/memory/types.js';
 import { scoreSalience } from '../src/memory/salience.js';
+import { isLived, lived } from '../src/memory/lived.js';
 import { DreamGate, defaultDreamGate, type DreamGateConfig } from '../src/memory/dream-gate.js';
 import { DreamService } from '../src/memory/dream.js';
 import { retention } from '../src/memory/probe.js';
@@ -31,14 +32,16 @@ class FakeExperience implements ExperienceLog {
 }
 
 class FakeMemory implements MemoryRepository {
+  readonly published: DreamVersion[] = [];
+  private currentCursor = 0;
   constructor(private readonly total = 0) {}
   get(): Memory | undefined { return undefined; }
   search(): Memory[] { return []; }
   recent(): Memory[] { return []; }
   count(): number { return this.total; }
   publish(): void {}
-  cursor(): number { return 0; }
-  publishDream(): void {}
+  cursor(): number { return this.currentCursor; }
+  publishDream(version: DreamVersion): void { this.published.push(version); this.currentCursor = version.cutoff; }
 }
 
 class FakeLock implements DreamLock {
@@ -59,14 +62,14 @@ function gateOf(rows: Experience[], overrides: Partial<DreamGateConfig> = {}, me
 }
 
 test('时间下限没到就不整合，哪怕信号很强', () => {
-  const { gate } = gateOf([entry(1, 'job.error')], { minHours: 4 });
+  const { gate } = gateOf([entry(1, 'note.failure')], { minHours: 4 });
   const decision = gate.check(HOUR);
   assert.equal(decision.fire, false);
   assert.equal(decision.blockedBy, 'g2.time');
 });
 
-test('一次失败就能越过显著性门控，不必先攒够会话数', () => {
-  const { gate } = gateOf([entry(1, 'job.error', { error: 'boom' })], { minHours: 1, minEpisodes: 50 });
+test('一次自己记下的失手就能越过显著性门控，不必先攒够会话数', () => {
+  const { gate } = gateOf([entry(1, 'note.failure', { text: '答应小林整理复习节奏，一直没做' }, 'self')], { minHours: 1, minEpisodes: 50 });
   const decision = gate.check(2 * HOUR);
   assert.equal(decision.fire, true);
   assert.equal(decision.snapshot.salience.failures, 1);
@@ -79,7 +82,7 @@ test('扫描节流挡住紧邻的重复扫描，避免时间门控反复通过',
 });
 
 test('当天次数用尽后不再触发，跨天自动重置', () => {
-  const { gate, state } = gateOf([entry(1, 'job.error')], { minHours: 1, maxRunsPerDay: 1 });
+  const { gate, state } = gateOf([entry(1, 'note.failure')], { minHours: 1, maxRunsPerDay: 1 });
   state.state.runDay = Math.floor(2 * HOUR / DAY);
   state.state.runsToday = 1;
   assert.equal(gate.check(2 * HOUR).blockedBy, 'g5.budget');
@@ -99,7 +102,7 @@ test('锁在执行侧获取，被占用时不并行整合', () => {
 });
 
 test('门控只做决策，不因为作业排队就占住锁', () => {
-  const { gate, lock } = gateOf([entry(1, 'job.error')], { minHours: 1 });
+  const { gate, lock } = gateOf([entry(1, 'note.failure')], { minHours: 1 });
   assert.equal(gate.check(2 * HOUR).fire, true);
   assert.equal(lock.locked, false);
 });
@@ -118,13 +121,33 @@ test('普通观察再多也不单独构成整合理由', () => {
   assert.equal(score.total, 6);
 });
 
-test('门控自己的记账不算新经验，避免拦得越多越容易触发', () => {
-  const rows = [entry(1, 'dream.gate.blocked', { blockedBy: 'g4.signal' }), entry(2, 'dream.completed', { memories: 3 })];
+test('系统流水不算新经验，避免拦得越多越容易触发、报错越多越要「反思人生」', () => {
+  const rows = [
+    entry(1, 'dream.gate.blocked', { blockedBy: 'g4.signal' }, 'runtime'),
+    entry(2, 'dream.completed', { memories: 3 }, 'dream'),
+    entry(3, 'job.error', { error: 'boom' }, 'runtime'),
+    entry(4, 'schedule.fired', {}, 'runtime'),
+    entry(5, 'tool.result', {}, 'operation:1'),
+  ];
   const { gate } = gateOf(rows, { minHours: 1, minEpisodes: 1 });
   const decision = gate.check(2 * HOUR);
   assert.equal(decision.snapshot.episodes, 0);
+  assert.equal(decision.snapshot.salience.total, 0);
   assert.equal(decision.fire, false);
   assert.equal(decision.blockedBy, 'g4.signal');
+});
+
+test('别人的话、自己的纸条和反思都算经历，机器流水一律不算', () => {
+  const livedKinds = [
+    entry(1, 'group.message', { name: '小林', text: '复习节奏有点乱' }),
+    entry(2, 'note.promise', { about: '小林', text: '答应帮忙捋复习节奏' }, 'self'),
+    entry(3, 'reflection', {}, 'self'),
+    entry(4, 'affect.appraisal', {}, 'self'),
+    entry(5, 'memory.miss', { query: '小林' }, 'self'),
+  ];
+  assert.deepEqual(lived(livedKinds).map(e => e.seq), [1, 2, 3, 4, 5]);
+  assert.equal(isLived(entry(6, 'job.error', {}, 'world')), false);
+  assert.equal(isLived(entry(7, 'dream.gate', {}, 'runtime')), false);
 });
 
 test('记忆压力达到阈值时，即使没有新经验也会整理', () => {
@@ -152,3 +175,54 @@ class FakeModel implements LanguageModel {
   constructor(private readonly output: unknown) {}
   async decide<T>(_request: ModelRequest<T>): Promise<T> { return this.output as T; }
 }
+
+/** 只记录模型实际看到的上下文，用来验证「系统流水没被当成经历交进去」。 */
+class RecordingModel implements LanguageModel {
+  readonly contexts: unknown[] = [];
+  calls = 0;
+  constructor(private readonly output: unknown) {}
+  async decide<T>(request: ModelRequest<T>): Promise<T> {
+    this.calls += 1;
+    this.contexts.push(request.context);
+    return this.output as T;
+  }
+}
+
+test('Dream 只看经历过的事，但仍按全量推进游标', async () => {
+  const memory = new FakeMemory();
+  const model = new RecordingModel({ summary: 'x', proposals: [],
+    memories: [{ id: 'm1', content: '小林最近为复习节奏焦虑', evidence: [1], kind: 'observation' }] });
+  const rows = [
+    entry(1, 'group.message', { name: '小林', text: '复习节奏有点乱' }),
+    entry(2, 'job.error', { error: 'boom' }, 'runtime'),
+    entry(3, 'dream.gate.blocked', {}, 'runtime'),
+  ];
+  const service = new DreamService({ repository: memory, experience: new FakeExperience(rows), model,
+    feedback: { completed(): void {} }, limits: defaultContextLimits });
+  const commit = await service.prepare('d1', undefined, 0);
+  const context = model.contexts[0] as { experiences: Experience[] };
+  assert.deepEqual(context.experiences.map(e => e.seq), [1]);
+  commit();
+  const published = memory.published[0];
+  assert.ok(published);
+  assert.equal(published.cutoff, 3);
+});
+
+test('一批全是机器流水时不调模型、不叫醒 self，但游标照样前进', async () => {
+  const memory = new FakeMemory();
+  const model = new RecordingModel({ summary: '不该被调用', memories: [], proposals: [] });
+  let notified = 0;
+  const service = new DreamService({
+    repository: memory,
+    experience: new FakeExperience([entry(1, 'job.error', {}, 'runtime'), entry(2, 'schedule.fired', {}, 'runtime')]),
+    model, feedback: { completed(): void { notified += 1; } }, limits: defaultContextLimits,
+  });
+  const commit = await service.prepare('d2', undefined, 0);
+  commit();
+  assert.equal(model.calls, 0);
+  assert.equal(notified, 0);
+  const published = memory.published[0];
+  assert.ok(published);
+  assert.equal(published.cutoff, 2);
+  assert.deepEqual(published.candidate.memories, []);
+});

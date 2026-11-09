@@ -7,7 +7,7 @@ export type NoteClock = () => number;
 
 export function registerMemory(registry: CapabilityRegistrar, memory: MemoryView, experience: ExperienceLog, clock: NoteClock = Date.now): void {
   const input = z.object({ query: z.string().max(1000) });
-  registry.register({ name: 'memory.search', description: '检索长期记忆及其原始证据引用；检索落空会被记为一次记忆缺口', effect: 'read', input,
+  registry.register({ name: 'memory.search', description: '回想一下：关于这个人、这件事，我都记得些什么？想不起来也没关系，会留个记号', effect: 'read', input,
     async run(raw) {
       const { query } = input.parse(raw);
       const found = memory.recall(query, 10);
@@ -17,12 +17,12 @@ export function registerMemory(registry: CapabilityRegistrar, memory: MemoryView
     },
   });
   const read = z.object({ after: z.number().int().min(0), limit: z.number().int().min(1).max(20).default(10) });
-  registry.register({ name: 'experience.read', description: '按序号读取原始经验，核查记忆引用', effect: 'read', input: read,
+  registry.register({ name: 'experience.read', description: '翻回当时记下的原话，确认自己没记错、没把推测当成事实', effect: 'read', input: read,
     async run(raw) { const args = read.parse(raw); return experience.read(args.after, args.limit); },
   });
 }
 
-const NOTE_KINDS = ['observation', 'intent', 'result', 'failure', 'correction'] as const;
+const NOTE_KINDS = ['observation', 'intent', 'result', 'failure', 'correction', 'promise'] as const;
 
 /**
  * L1 写入通道：append-only，不经过模型，不会因为 Dream 忙而阻塞。
@@ -30,20 +30,50 @@ const NOTE_KINDS = ['observation', 'intent', 'result', 'failure', 'correction'] 
  * 这是「自主」的前置条件而不是附加功能——一个留不下痕迹的 agent，明天醒来和今天没有区别，
  * 「决定明天做什么」在逻辑上就没有可选项。任务侧只负责记录发生了什么，
  * 判断「什么值得记住」交给 Dream，两条路径分开，延迟和可靠性问题一起消失。
+ *
+ * 工具说明刻意写成「给自己留张纸条」而不是「追加经验日志」：模型会照着
+ * 工具的口气写内容。写成日志，它就交回一条日志；写成纸条，它才会写
+ * 「关于谁、发生了什么、我当时怎么想」。
  */
 export function registerNotes(registry: CapabilityRegistrar, experience: ExperienceLog, clock: NoteClock = Date.now): void {
   const input = z.object({
+    /** 关于谁。让每张纸条都带一个社交锚点， Dream 才容易把同一个人的事串起来。 */
+    about: z.string().min(1).max(80).optional(),
     text: z.string().min(1).max(2000),
     kind: z.enum(NOTE_KINDS).default('observation'),
   });
   registry.register({
     name: 'self.note',
-    description: '把一条观察、意图、结果、失败或纠正追加到不可变经验日志。这是你留给下一次醒来的痕迹；不写，下次就什么都不记得',
+    description: '给自己留一张纸条，像人随手记一句：关于谁（about）、发生了什么、我当时怎么想。下次醒来靠它想起对方。kind 可选 observation / intent / result / failure / correction / promise（答应过谁什么）',
     effect: 'write', input,
     async run(raw, { operationId }) {
       const args = input.parse(raw);
-      const seq = experience.record('self', `note.${args.kind}`, { text: args.text, operationId }, clock());
+      const seq = experience.record('self', `note.${args.kind}`, { text: args.text, about: args.about, operationId }, clock());
       return { seq, kind: args.kind, recorded: true };
+    },
+  });
+}
+
+/**
+ * 让主体在群里真的能开口。没有发送通道的话，「主动交流」只是提示词里的一句空话，
+ * 模型看两轮就会选择休息——实测里它明确说过「我没有发送通道」。
+ * 说出去的话同样写进经验日志，Dream 才能看到「我说了什么 / 对方怎么回」的完整对话，
+ * 而不是只看到别人的消息。
+ */
+export function registerConversation(registry: CapabilityRegistrar, experience: ExperienceLog, clock: NoteClock = Date.now): void {
+  const input = z.object({
+    to: z.string().min(1).max(80),
+    text: z.string().min(1).max(2000),
+    about: z.string().min(1).max(80).optional(),
+  });
+  registry.register({
+    name: 'group.say',
+    description: '在群里对某个人说一句话。想一想对方现在需要的是回应、陪伴还是别打扰；说出去的话你也会记得，对方可能回，也可能不回',
+    effect: 'write', input,
+    async run(raw, { operationId }) {
+      const args = input.parse(raw);
+      const seq = experience.record('self', 'group.message', { from: 'me', to: args.to, text: args.text, about: args.about, operationId }, clock());
+      return { seq, said: true };
     },
   });
 }

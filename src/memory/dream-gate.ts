@@ -1,5 +1,6 @@
 import type { DreamLock, DreamState, DreamStateRepository, ExperienceLog, MemoryRepository } from './ports.js';
 import { scoreSalience, type SalienceScore } from './salience.js';
+import { lived } from './lived.js';
 
 /**
  * Dream 触发门控：按开销从低到高逐级淘汰，任一道拦下就静默返回。
@@ -53,12 +54,6 @@ export interface DreamGateDeps {
   state: DreamStateRepository; experience: ExperienceLog; memory: MemoryRepository;
   lock: DreamLock; config: DreamGateConfig;
 }
-
-/**
- * 门控自己写的记账不算「新经验」。
- * 否则会形成自我触发：门控拦下 → 写一条拦截记录 → 记录被算成一条新经验 → 下次更容易触发。
- */
-const BOOKKEEPING = /^dream\.(gate|completed)/;
 
 export class DreamGate {
   private readonly deps: DreamGateDeps;
@@ -119,7 +114,9 @@ export class DreamGate {
 
   private snapshot(state: DreamState, now: number): GateSnapshot {
     const pending = this.deps.experience.read(this.deps.memory.cursor(), this.deps.config.batch);
-    const informative = pending.filter(entry => !BOOKKEEPING.test(entry.kind));
+    // 只数「经历过的事」。门控自己的记账、作业报错、调度心跳都不算新生活，
+    // 否则会自我触发：拦下 → 写一条拦截记录 → 记录被算成新经验 → 下次更容易触发。
+    const informative = lived(pending);
     const memories = this.deps.memory.count();
     return {
       hoursSince: Number(((now - state.lastAt) / HOUR).toFixed(2)),

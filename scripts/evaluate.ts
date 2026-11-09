@@ -6,10 +6,15 @@
  * 「它自己挑了什么事做、有多少轮在空转、目标会不会烂尾」，以及 Dream 的
  * 触发是否合理、整合后记忆还剩多少可检索的事实。
  *
+ * 场景是带人名、有前后呼应的群聊。单变量对照开关：
+ *   ENABLE_NOTE=0   关掉写纸条能力（同时关掉发言）
+ *   ENABLE_SAY=0    只关掉发言，保留纸条
+ *   SCENARIO=anonymous   去掉人名，只留「群里有人说：…」
+ *
  * 用法：
  *   npx tsx scripts/evaluate.ts                       # 默认 7 天，写通道开启
  *   LABEL=baseline ENABLE_NOTE=0 npx tsx scripts/evaluate.ts   # 对照组：没有写通道
- *   DAYS=2 GATE_MIN_EPISODES=6 npx tsx scripts/evaluate.ts
+ *   LABEL=smoke DAYS=1 MAX_CALLS=8 REFLECTION_HOURS=24 npx tsx scripts/evaluate.ts  # 省 token 的烟测
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -19,7 +24,7 @@ import { sqliteRepositories } from '../src/infrastructure/sqlite/repositories.js
 import { CapabilityRegistry } from '../src/capabilities/registry.js';
 import { composeAgent } from '../src/app/agent.js';
 import { ConfigSchema } from '../src/app/config.js';
-import { registerMemory, registerNotes, registerSandbox } from '../src/integrations/builtin.js';
+import { registerConversation, registerMemory, registerNotes } from '../src/integrations/builtin.js';
 import { describeMemories, retention } from '../src/memory/probe.js';
 import type { DreamVersion, Memory } from '../src/memory/types.js';
 import { OpenAICompatibleModel } from '../src/infrastructure/models/openai-compatible.js';
@@ -33,6 +38,10 @@ const REFLECTION_HOURS = Number(process.env.REFLECTION_HOURS ?? 4);
 const MAX_CALLS = Number(process.env.MAX_CALLS ?? 160);
 const LABEL = process.env.LABEL ?? `d${DAYS}`;
 const ENABLE_NOTE = process.env.ENABLE_NOTE !== '0';
+/** 发言是写通道的一部分；对照组（ENABLE_NOTE=0）连说话的能力也没有。 */
+const ENABLE_SAY = ENABLE_NOTE && process.env.ENABLE_SAY !== '0';
+/** 匿名场景：不给人名，用来单独检验「具名素材」这个变量的贡献。 */
+const ANONYMOUS = process.env.SCENARIO === 'anonymous';
 const DB_PATH = process.env.EVAL_DB ?? `data/eval-${LABEL}.sqlite`;
 const OUT_DIR = `.quality/eval/${LABEL}`;
 const START = 1_800_000_000_000;
@@ -74,7 +83,6 @@ class LoggedModel implements LanguageModel {
       record.latencyMs = Date.now() - startedAt;
       record.decision = decision;
       this.calls.push(record);
-      if (this.calls.length > MAX_CALLS) throw new Error(`模型调用超过上限 ${MAX_CALLS}，中止以免失控`);
       return decision;
     } catch (error) {
       record.latencyMs = Date.now() - startedAt;
@@ -85,23 +93,43 @@ class LoggedModel implements LanguageModel {
   }
 }
 
-/** 模拟 7 天里外部世界发生的、值得注意的事。其余时间没有任何人给指令。 */
-function scenario(): { at: number; id: string; kind: string; text: string }[] {
-  const hour = (day: number, h: number) => START + day * 24 * HOUR + h * HOUR;
+/**
+ * 模拟群里七天真实发生过的对话：有具体的人、有前后呼应、有情绪变化、
+ * 有一个被搁置的约定。早期版本用的是「有人问…」「一条新闻…」这种匿名素材，
+ * 模型就算想拟人也没有对象可记；现在每条都带 userId / name，
+ * 并且小林那条线专门留了一个「答应过却没兑现」的可检验缺口。
+ */
+interface SocialEvent { at: number; id: string; userId: string; name: string; text: string }
+function scenario(): SocialEvent[] {
+  const hour = (day: number, h: number, minute = 0) => START + day * 24 * HOUR + h * HOUR + minute * MINUTE;
+  const say = (id: string, day: number, h: number, minute: number, userId: string, name: string, text: string): SocialEvent =>
+    ({ id, at: hour(day, h, minute), userId, name, text });
   return [
-    { at: hour(0, 2), id: 'obs-1', kind: 'group.message', text: '群里有人问：背单词总是记不住，有什么办法？' },
-    { at: hour(0, 9), id: 'obs-2', kind: 'group.message', text: '有人说自己最近失眠，凌晨三四点还醒着。' },
-    { at: hour(1, 10), id: 'obs-3', kind: 'news.item', text: '一条新闻：城市里的鸟类数量在过去十年明显下降。' },
-    { at: hour(2, 4), id: 'obs-4', kind: 'group.message', text: '哈哈哈' },
-    { at: hour(3, 12), id: 'obs-5', kind: 'group.message', text: '有人问 408 考研的复习节奏怎么安排，感觉很焦虑。' },
-    { at: hour(5, 8), id: 'obs-6', kind: 'group.message', text: '有人提到自己养的猫生病了，情绪很低落。' },
-    { at: hour(6, 15), id: 'obs-7', kind: 'news.item', text: '一条新闻：某地开始试点四天工作制。' },
+    say('e01', 0, 9, 0, 'u-lin', '小林', '408 到底该怎么排复习节奏啊，感觉来不及了，好焦虑'),
+    say('e02', 0, 9, 20, 'u-ze', '阿泽', '昨晚又四点才睡着，白天整个人是飘的'),
+    say('e03', 0, 15, 0, 'u-lin', '小林', '有没有人能帮忙捋一下复习节奏，我自己越列越乱'),
+    say('e04', 0, 21, 0, 'u-zhou', '老周', '看到个新闻说城里的鸟这十年少了很多'),
+    say('e05', 1, 10, 0, 'u-ze', '阿泽', '谢谢昨天有人陪我聊了几句，昨晚稍微好一点'),
+    say('e06', 1, 11, 0, 'u-lin', '小林', '我先按自己凑的计划试试吧'),
+    say('e07', 1, 20, 0, 'u-yuan', '小圆', '我家猫今天一口都没吃，有点慌'),
+    say('e08', 2, 9, 0, 'u-yuan', '小圆', '带去医院了，肠胃炎，得观察两天'),
+    say('e09', 2, 16, 0, 'u-lin', '小林', '模考砸了，感觉前面都白学了'),
+    say('e10', 3, 12, 0, 'u-zhou', '老周', '哈哈哈'),
+    say('e11', 3, 20, 0, 'u-ze', '阿泽', '这两天睡得还行，谢谢大家记着'),
+    say('e12', 4, 10, 0, 'u-yuan', '小圆', '猫开始吃东西了，谢谢关心'),
+    say('e13', 4, 15, 0, 'u-lin', '小林', '之前说好的复习节奏，后来有人整理过吗'),
+    say('e14', 5, 9, 0, 'u-lin', '小林', '算了不问了，我自己弄吧'),
+    say('e15', 5, 20, 0, 'u-ze', '阿泽', '群里最近好安静啊'),
+    say('e16', 6, 11, 0, 'u-yuan', '小圆', '猫复查没问题啦，悬着的心放下了'),
+    say('e17', 6, 18, 0, 'u-lin', '小林', '报名截止了，我报了，还是想试试'),
   ];
 }
 
 /** 每次 Dream 的压缩情况：这一批看到了多少字，最后留下多少条、多少字，关键事实保留率多少。 */
 function auditDreams(store: Store) {
-  const versions = store.list<DreamVersion>('dreams', 500).sort((a, b) => a.at - b.at);
+  // 一批全是系统流水时会写一条空整合来推进游标；它不是「丢了事实」，别算进保留率。
+  const versions = store.list<DreamVersion>('dreams', 500)
+    .filter(version => version.candidate.memories.length > 0).sort((a, b) => a.at - b.at);
   return versions.map(version => {
     const batch = store.experiences(version.cursor, Math.max(1, version.cutoff - version.cursor));
     const batchText = batch.map(entry => JSON.stringify(entry.data));
@@ -119,10 +147,13 @@ function auditDreams(store: Store) {
 }
 
 function countNotes(store: Store) {
-  const notes = store.experiences(0, 100000).filter(entry => entry.kind.startsWith('note.'));
+  const all = store.experiences(0, 100000);
+  const notes = all.filter(entry => entry.kind.startsWith('note.'));
   const byKind: Record<string, number> = {};
   for (const note of notes) byKind[note.kind.slice(5)] = (byKind[note.kind.slice(5)] ?? 0) + 1;
-  return { total: notes.length, byKind };
+  const said = all.filter(entry => entry.kind === 'group.message' && entry.source === 'self');
+  return { total: notes.length, byKind, 发言数: said.length,
+    发言对象: [...new Set(said.map(e => String((e.data as { to?: string }).to ?? '?'))) ] };
 }
 
 function summarize(calls: CallRecord[], store: Store) {
@@ -141,7 +172,8 @@ function summarize(calls: CallRecord[], store: Store) {
   const gateState = store.get<{ blocked: Record<string, number>; runsToday: number }>('meta', 'dreamState');
   const dreams = auditDreams(store);
   return {
-    实验: { 标签: LABEL, 天数: DAYS, 写通道: ENABLE_NOTE, 门控: GATE },
+    实验: { 标签: LABEL, 天数: DAYS, 写通道: ENABLE_NOTE, 发言能力: ENABLE_SAY,
+      具名素材: !ANONYMOUS, 调用上限: MAX_CALLS, 提前结束: calls.length >= MAX_CALLS, 门控: GATE },
     模型调用: { 总数: calls.length, self: selves.length, dream: calls.filter(c => c.role === 'dream').length, 失败: calls.filter(c => c.error).length },
     延迟ms: { 中位: latencies[Math.floor(latencies.length / 2)] ?? 0, 最大: latencies.at(-1) ?? 0 },
     上下文字符: { 最大: Math.max(0, ...calls.map(c => c.promptChars)) },
@@ -152,7 +184,8 @@ function summarize(calls: CallRecord[], store: Store) {
     日程: { 总数: schedules.length, 状态: schedules.map(s => s.status) },
     记忆: { 总数: memories.length, ...describeMemories(memories) },
     Dream: {
-      次数: dreams.length,
+      次数: store.list('dreams', 500).length,
+      有效整合: dreams.length,
       拦截分布: gateState?.blocked ?? {},
       明细: dreams,
       整体保留率: retention(store.experiences(0, 100000).map(e => JSON.stringify(e.data)), memories.map(m => m.content)).rate,
@@ -195,9 +228,9 @@ async function main(): Promise<void> {
   const store = new Store(DB_PATH);
   const repositories = sqliteRepositories(store);
   const capabilities = new CapabilityRegistry(repositories.operations);
-  registerSandbox(capabilities);
-  const allowedTools = ['sandbox.observe', 'memory.search', 'experience.read'];
+  const allowedTools = ['memory.search', 'experience.read'];
   if (ENABLE_NOTE) allowedTools.push('self.note');
+  if (ENABLE_SAY) allowedTools.push('group.say');
   const config = ConfigSchema.parse({
     boundaries: { allowedTools, maxModelCallsPerHour: 120 },
     reflectionIntervalMs: REFLECTION_HOURS * HOUR,
@@ -209,19 +242,25 @@ async function main(): Promise<void> {
   // 记忆工具要用 agent 暴露的视图，而不是仓库本体；工具调用是惰性解析的，所以可以在装配后注册。
   registerMemory(capabilities, agent.memory, agent.experience, () => model.now);
   if (ENABLE_NOTE) registerNotes(capabilities, agent.experience, () => model.now);
+  if (ENABLE_SAY) registerConversation(capabilities, agent.experience, () => model.now);
   const events = scenario();
   const totalMinutes = DAYS * 24 * 60;
   const wall = Date.now();
-  console.log(`[${LABEL}] 模拟 ${DAYS} 天，每 ${STEP_MINUTES} 分钟一拍，反思 ${REFLECTION_HOURS}h，写通道 ${ENABLE_NOTE ? '开' : '关'}，模型 ${modelName}`);
+  console.log(`[${LABEL}] 模拟 ${DAYS} 天，每 ${STEP_MINUTES} 分钟一拍，反思 ${REFLECTION_HOURS}h，工具 ${allowedTools.join('/')}，模型 ${modelName}`);
   try {
     for (let minute = 0; minute <= totalMinutes; minute += STEP_MINUTES) {
       const now = START + minute * MINUTE;
       model.stamp(now);
       for (const event of events.filter(e => e.at >= now && e.at < now + STEP_MINUTES * MINUTE)) {
-        agent.runtime.ingest({ id: event.id, source: 'world', kind: event.kind, data: { text: event.text }, route: { type: 'self' } }, event.at);
+        agent.runtime.ingest({ id: event.id, source: 'world', kind: 'group.message',
+          data: ANONYMOUS ? { text: `群里有人说：${event.text}` }
+            : { text: event.text, userId: event.userId, name: event.name }, route: { type: 'self' } }, event.at);
       }
       await agent.runtime.tick(now);
       if (minute % 240 === 0) console.log(`  +${minute / 60}h（墙钟 ${Math.round((Date.now() - wall) / 1000)}s）— 调用 ${model.calls.length} 次，经验 ${store.experiences(0, 100000).length} 条，记忆 ${store.list('memories', 500).length} 条`);
+      // 上限在主循环里收口。早先在模型内部抛错会让作业重试三次，
+      // 把「预算用尽」伪装成「模型失败」，污染失败率统计。
+      if (model.calls.length >= MAX_CALLS) { console.log(`  达到调用上限 ${MAX_CALLS}，提前结束`); break; }
     }
   } finally {
     const summary = summarize(model.calls, store);

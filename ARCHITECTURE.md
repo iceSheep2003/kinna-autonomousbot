@@ -97,7 +97,19 @@ Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用
 
 这样拆的理由是延迟与可用性：如果任务要同步等 self 想完才能记笔记，self 就必须时刻醒着，而「空闲」恰恰是 dreaming 的前提。L1 不会失败（纯追加），L2 失败下次再来即可。
 
-`self.note` 是唯一的写入能力，由 `integrations/builtin.ts` 注册；`allowedTools` 默认包含它。记忆的**唯一写入者仍是 self 侧的角色**——L1 只是给这个角色一个不需思考的手，不是让场景 session 拥有记忆写入权。
+`self.note` 与 `group.say` 由 `integrations/builtin.ts` 注册，`allowedTools` 默认包含两者。记忆的**唯一写入者仍是 self 侧的角色**——L1 只是给这个角色一个不需思考的手，不是让场景 session 拥有记忆写入权。
+
+`group.say` 让「主动交流」不只是提示词里的一句空话：没有发送通道时，模型看两轮就会判断自己无事可做而选择休息。说出去的话同样写进经验日志，Dream 才看得到「我说了什么 / 对方怎么回」的完整对话，而不是只看到别人的消息。纸条带可选的 `about` 字段（关于谁），让每张纸条都有社交锚点，同一个人的事才串得起来。
+
+### 什么算「经历过的事」
+
+`memory/lived.ts` 定义这个判定，门控与 `DreamService` 共用同一套素材，保证「为什么触发」和「看到什么」一致。
+
+判定顺序是**先排除机器流水，再看来源**：`job.*` / `dream.*` / `schedule.*` / `tool.*` / `scene.*` 等无论 source 标成什么都不算经历；剩下的 `world` / `user` 来源、自己写下的 `note.*`、`reflection`、`affect.appraisal`、别人说的 `*.message`、以及 `memory.miss` 才算。白名单而非黑名单，是为了让以后新增的运行时流水默认不进主体记忆。
+
+这条是实测逼出来的。早期版本把全部经验交给模型，结果 `job.error` 还被 `salience` 当成「失败」给了最高权重——系统一报错就触发整合，agent 于是反复琢磨门控为什么拦它、作业错误分几类，一个人都没记住。不是模型跑偏，是给它看错了东西。
+
+Dream 仍按**全量**经验推进游标（否则系统流水会卡在同一批被反复读取），但只把 lived 那部分交给模型；一批全是流水时不调模型、不叫醒 self，只写一条空整合占掉这段游标。
 
 ### Dream 触发：门控级联，不是定时器
 
@@ -128,6 +140,16 @@ G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状�
 
 方法与实测结果记录在 [EXPERIMENTS.md](./EXPERIMENTS.md)。
 
+### 提示词：以人为对象，不是以系统为对象
+
+`self/session.ts` 与 `memory/dream.ts` 的指令刻意用第一人称、以关系为对象：self 醒来想的是「谁最近不太好、答应过谁什么、上次哪句话没接好」，Dream 夜里回想的是「谁和谁有了变化、我对某个人的印象被哪两件事改变的」。工具说明也写成「给自己留张纸条」「翻回当时记下的原话」，而不是「追加经验日志」「按序号读取原始经验」。
+
+原因很直接：**模型会照着提示词和工具说明的口气组织内容**。早期写的是「整理不可变经验片段，提炼观察、推测和策略」，模型便真的把自己当成一条数据管道，产出的记忆全是门控拦截原因和作业错误分类。三种 `Memory.kind` 没变，但提示词里把它们对应到人的三种回想：亲历的一件具体事、对一个人或一段关系的判断、以后相处的分寸。
+
+所有机器约束（evidence 下限、稳定 ID、schedule 语义、授权边界、JSON schema）一条没少，只是挪到末尾并标明「这是记账要求，不是你思考的方式」。
+
+主体默认值也收敛到社交场景：`identity` 是「群里一个记性不错、会替人留心的常驻伙伴」，`tendencies` 是「记住谁说过什么」「有来有往」「答应过别人的事要兑现」，第一次唤醒的触发文本从 `You can explore; no assigned task.` 换成了具体的群场景。评估脚本的场景同样改成带 `userId` / `name` 的多轮对话，含情绪变化、前后呼应和一个被搁置的约定——匿名素材下，模型就算想记人也没有对象。
+
 ## 场景扩展
 
 新增平台只需实现 `EnvironmentPlugin`：注册能力，接收平台事件并转换为 `IncomingEvent`。插件不拿 Repositories、数据库或主体写服务。QQ/B站/后续平台没有各自的常驻自主 Agent；跨平台行动由同一个主体形成意图，再由局部执行组合工具。
@@ -144,7 +166,7 @@ G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状�
 - 参数超过 4 个的函数接收请求对象（`InvocationRequest`、`SendInput`、`StepFrame`、`ChannelRequest`）。
 - 长函数按“一次只做一件事”拆成有名字的私有方法；分支链改为分发表（QQ 消息片段解析、TTS 供应商请求、媒体类型嗅探）。
 
-`npm run audit` 另外执行 tsc 与 55 个验收用例，并输出 `.quality/code-quality-gate/report.html`。审计用 `.code-quality-gate/run.lock` 保证单实例，收尾时删除该目录；若运行环境禁止 `rmdir`，会报 `Configuration ERROR: broker denied delete`，此时两项检查均已执行通过，应分别用 `npm run quality`、`tsc --noEmit`、`node scripts/junit.mjs` 复核，而不是改代码。
+`npm run audit` 另外执行 tsc 与 58 个验收用例，并输出 `.quality/code-quality-gate/report.html`。审计用 `.code-quality-gate/run.lock` 保证单实例，收尾时删除该目录；若运行环境禁止 `rmdir`，会报 `Configuration ERROR: broker denied delete`，此时两项检查均已执行通过，应分别用 `npm run quality`、`tsc --noEmit`、`node scripts/junit.mjs` 复核，而不是改代码。
 
 ## 自动化验收
 

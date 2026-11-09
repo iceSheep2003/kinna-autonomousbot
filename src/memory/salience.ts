@@ -32,7 +32,8 @@ function isCorrection(experience: Experience, kind: string): boolean {
 }
 
 function isNovelty(kind: string): boolean {
-  return kind === 'note.observation' || kind === 'note.result' || kind.endsWith('.message') || kind.endsWith('.item');
+  return kind === 'note.observation' || kind === 'note.result' || kind === 'note.intent' || kind === 'note.promise'
+    || kind.endsWith('.message') || kind.endsWith('.item');
 }
 
 /** 经验日志里的 kind 由写入方决定，这里只做保守归类；认不出的不计分。 */
