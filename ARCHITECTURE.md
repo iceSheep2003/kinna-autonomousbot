@@ -102,7 +102,7 @@ Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用
 - 参数超过 4 个的函数接收请求对象（`InvocationRequest`、`SendInput`、`StepFrame`、`ChannelRequest`）。
 - 长函数按“一次只做一件事”拆成有名字的私有方法；分支链改为分发表（QQ 消息片段解析、TTS 供应商请求、媒体类型嗅探）。
 
-`npm run audit` 另外执行 tsc 与 40 个验收用例，并输出 `.quality/code-quality-gate/report.html`。
+`npm run audit` 另外执行 tsc 与 43 个验收用例，并输出 `.quality/code-quality-gate/report.html`。审计用 `.code-quality-gate/run.lock` 保证单实例，收尾时删除该目录；若运行环境禁止 `rmdir`，会报 `Configuration ERROR: broker denied delete`，此时两项检查均已执行通过，应分别用 `npm run quality`、`tsc --noEmit`、`node scripts/junit.mjs` 复核，而不是改代码。
 
 ## 自动化验收
 

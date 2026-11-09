@@ -147,10 +147,12 @@ SQLite 租约用于防止意外双实例。本实现按单进程部署，不是�
 
 ```sh
 npm run quality   # 静态门槛：圈/认知复杂度、嵌套、参数个数、语句数、依赖环
-npm run audit     # 完整审计：tsc + 40 个验收用例（JUnit）+ 静态门槛
+npm run audit     # 完整审计：tsc + 43 个验收用例（JUnit）+ 静态门槛
 ```
 
 `quality.config.json` 固定扫描范围（`src`）与阈值。写法上因此有两条硬约定：协作者超过 4 个的类传依赖对象，参数超过 4 个的函数传请求对象。参数个数就是“这个函数需要知道多少东西”的度量。
+
+`cqg audit` 用 `.code-quality-gate/run.lock` 做单实例互斥，结束时删除该目录。若运行环境禁止 `rmdir`（例如受限沙箱），审计会在收尾阶段报 `Configuration ERROR: broker denied delete` —— 此时两项检查其实都已执行并通过，可用 `npm run quality`、`tsc --noEmit` 和 `node scripts/junit.mjs` 分别验证，或在 CI 中运行 `npm run audit`。不要因为这条错误去改代码。
 
 ## 验证与限制
 
