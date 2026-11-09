@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { QqConfigSchema } from '../integrations/qq/types.js';
+import { BilibiliConfigSchema } from '../integrations/bilibili/types.js';
 import { defaultPersonality } from '../shared/persona.js';
 import { defaultAffectConfig } from '../subject/mood-system.js';
 
@@ -13,6 +14,8 @@ const PersonalitySchema = z.object({
 export const ConfigSchema = z.object({
   plugins: z.array(z.string()).default([]),
   qq: QqConfigSchema.optional(),
+  /** B 站账号：只放策略与白名单，登录态(SESSDATA/bili_jct)只从环境读。 */
+  bilibili: BilibiliConfigSchema.optional(),
   contextLimits: z.object({
     observations: z.number().int().min(1).max(100).optional(), recentTurns: z.number().int().min(1).max(20).optional(),
     goals: z.number().int().min(1).max(100).optional(), memories: z.number().int().min(1).max(40).optional(),
