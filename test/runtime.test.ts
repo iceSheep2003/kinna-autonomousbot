@@ -163,11 +163,11 @@ test('副作用不确定时不自动重发；已完成 operation 直接复用结
   const store = new Store(':memory:'); const registry = new CapabilityRegistry(sqliteRepositories(store).operations); let writes = 0;
   registry.register({ name: 'test.send', description: '写操作', effect: 'write', input: z.object({}), async run() { writes++; throw new Error('connection lost after send'); } });
   try {
-    await assert.rejects(registry.invoke('op', 'test.send', {}, ['test.send'], NOW), UncertainOperation);
-    await assert.rejects(registry.invoke('op', 'test.send', {}, ['test.send'], NOW), UncertainOperation);
+    await assert.rejects(registry.invoke({ operationId: 'op', name: 'test.send', input: {}, allowed: ['test.send'], now: NOW }), UncertainOperation);
+    await assert.rejects(registry.invoke({ operationId: 'op', name: 'test.send', input: {}, allowed: ['test.send'], now: NOW }), UncertainOperation);
     assert.equal(writes, 1);
     store.put('operations', 'op2', { status: 'completed', effect: 'write', result: { remoteId: '123' } });
-    assert.deepEqual(await registry.invoke('op2', 'test.send', {}, ['test.send'], NOW), { remoteId: '123' });
+    assert.deepEqual(await registry.invoke({ operationId: 'op2', name: 'test.send', input: {}, allowed: ['test.send'], now: NOW }), { remoteId: '123' });
     assert.equal(writes, 1);
   } finally { store.close(); }
 });
@@ -232,7 +232,7 @@ test('通过插件入口接入新环境，无须修改 self 或执行器', async
     const catalog = f.registry.catalog(['local.explore']);
     assert.equal(catalog.length, 1);
     assert.equal(catalog[0]?.inputSchema.type, 'object');
-    const observed = await f.registry.invoke('local-read', 'local.explore', {}, ['local.explore'], NOW) as { simulated: boolean };
+    const observed = await f.registry.invoke({ operationId: 'local-read', name: 'local.explore', input: {}, allowed: ['local.explore'], now: NOW }) as { simulated: boolean };
     assert.equal(observed.simulated, true);
     assert.equal(f.store.experiences().filter(e => e.kind === 'environment.available').length, 1);
   } finally { f.close(); }
@@ -290,7 +290,7 @@ test('外部写入成功后本地提交前崩溃，重启复用回执且不再�
   addWrite(a.registry);
   await a.runtime.tick(NOW);
   const claimed = a.store.claim(NOW + 1000)!;
-  await a.registry.invoke(`operation:${claimed.id}`, 'test.write', {}, ['test.write'], NOW + 1000);
+  await a.registry.invoke({ operationId: `operation:${claimed.id}`, name: 'test.write', input: {}, allowed: ['test.write'], now: NOW + 1000 });
   // 没有提交 execution 状态，相当于进程此时退出。
   a.close();
   const model = new ScriptedModel(() => rest);

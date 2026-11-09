@@ -11,9 +11,13 @@ export interface Operation {
   status: 'started' | 'completed' | 'uncertain' | 'failed'; at: number; result?: unknown; error?: string;
 }
 export interface OperationRepository { get(id: string): Operation | undefined; save(operation: Operation): void }
+/** 一次工具调用的完整输入；operationId 同时是幂等键。 */
+export interface InvocationRequest {
+  operationId: string; name: string; input: unknown; allowed: string[]; now: number; scope?: CapabilityScope;
+}
 export interface CapabilityAccess {
   catalog(allowed: string[]): { name: string; description: string; effect: 'read' | 'write'; inputSchema: unknown }[];
   validate(names: string[], allowed: string[]): void;
-  invoke(operationId: string, name: string, input: unknown, allowed: string[], now: number, scope?: CapabilityScope): Promise<unknown>;
+  invoke(request: InvocationRequest): Promise<unknown>;
 }
 export class UncertainOperation extends Error {}

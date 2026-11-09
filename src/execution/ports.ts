@@ -24,7 +24,11 @@ export interface SceneSessionRepository {
   recentDecisions(id: string, limit: number): unknown[];
   appendTurn(id: string, turn: { at: number; context: unknown; decision: unknown }): void;
 }
+/** 场景要求主体反思时上报的最小证据；由应用层转成 self inbox 事件。 */
+export interface SceneReflection {
+  sessionId: string; trigger: string; summary: string; evidence: number[];
+}
 export interface SceneRequests {
   continue(id: string, now: number): void;
-  reflect(id: string, trigger: string, summary: string, evidence: number[], now: number): void;
+  reflect(request: SceneReflection, now: number): void;
 }

@@ -12,6 +12,8 @@
     "start": "node dist/src/main.js",
     "test": "tsx --test test/*.test.ts",
     "check": "npm run build && npm test",
+    "quality": "cqg check",
+    "audit": "cqg audit",
     "demo": "tsx src/demo.ts"
   },
   "dependencies": {

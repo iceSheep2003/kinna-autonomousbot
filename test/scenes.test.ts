@@ -92,7 +92,7 @@ test('QQ 场景的工具授权绑定宿主 scope，模型不能把回复发到�
   const plugin = createQqPlugin({ config: QqConfigSchema.parse({ selfId: '99', allowedGroups: ['123', '456'] }), gateway, state: new SqliteQqState(f.db) });
   try {
     await plugin.setup({ register: tool => f.capabilities.register(tool) });
-    await assert.rejects(f.capabilities.invoke('op', 'qq.send_message', { target: { type: 'group', id: '456' }, text: '跨群' }, ['qq.send_message'], NOW, { environment: 'qq', scope: { type: 'group', id: '123' } }), /scene scope/);
+    await assert.rejects(f.capabilities.invoke({ operationId: 'op', name: 'qq.send_message', input: { target: { type: 'group', id: '456' }, text: '跨群' }, allowed: ['qq.send_message'], now: NOW, scope: { environment: 'qq', scope: { type: 'group', id: '123' } } }), /scene scope/);
     assert.equal(sends, 0);
   } finally { f.close(); }
 });

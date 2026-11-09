@@ -92,6 +92,18 @@ Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用
 
 `integrations/builtin.ts` 展示记忆查询、原始证据读取、模拟环境与 Brave 搜索接入。`examples/local-environment.ts` 展示完整环境插件。生产插件还需实现认证、发送对象范围、平台限流、资源读取和业务回执语义。
 
+## 代码门槛与结构约定
+
+`quality.config.json` 与 `npm run quality` 使用 code-quality-gate 的内置检查约束结构：每函数圈复杂度 ≤10、认知复杂度 ≤15、控制流嵌套 ≤4、参数 ≤4、AST 语句 ≤40，每文件 ≤500 行，并检查相对导入的依赖环。
+
+由此固定三条写法约定：
+
+- 协作者超过 4 个的类接收单一依赖对象（`WorkerDependencies`、`SceneDependencies`、`RunnerDependencies` 等），字段在构造函数中显式赋值，不在签名里堆参数。
+- 参数超过 4 个的函数接收请求对象（`InvocationRequest`、`SendInput`、`StepFrame`、`ChannelRequest`）。
+- 长函数按“一次只做一件事”拆成有名字的私有方法；分支链改为分发表（QQ 消息片段解析、TTS 供应商请求、媒体类型嗅探）。
+
+`npm run audit` 另外执行 tsc 与 40 个验收用例，并输出 `.quality/code-quality-gate/report.html`。
+
 ## 自动化验收
 
 `test/architecture.test.ts` 使用 TypeScript AST 读取依赖并验证：

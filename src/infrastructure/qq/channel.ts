@@ -1,4 +1,5 @@
-import type { QqChannelPort } from '../../integrations/qq/ports.js';
+import type { ChannelRequest, QqChannelPort } from '../../integrations/qq/ports.js';
+const PATH_PATTERN = /^\/(users\/@me\/guilds|guilds\/\d+\/(api_permission|channels|members(?:\/\d+)?|roles\/\d+\/members|announces)|channels\/\d+(?:\/(online_nums|threads(?:\/\d+(?:\/comment)?)?|schedules(?:\/\d+)?))?)$/;
 export class QqChannelClient implements QqChannelPort {
   private token = ''; private expiresAt = 0; private refreshing?: Promise<string>;
   constructor(private readonly config: { appId: string; appSecret: string; sandbox: boolean }, private readonly clock = Date.now) {}
@@ -14,13 +15,17 @@ export class QqChannelClient implements QqChannelPort {
     })();
     try { return await this.refreshing; } finally { this.refreshing = undefined; }
   }
-  async request(method: string, path: string, body?: unknown, signal?: AbortSignal, query?: Record<string, string>): Promise<unknown> {
-    if (!/^\/(users\/@me\/guilds|guilds\/\d+\/(api_permission|channels|members(?:\/\d+)?|roles\/\d+\/members|announces)|channels\/\d+(?:\/(online_nums|threads(?:\/\d+(?:\/comment)?)?|schedules(?:\/\d+)?))?)$/.test(path)) throw new Error('Unsupported QQ channel path');
+  async request(request: ChannelRequest): Promise<unknown> {
+    const { method, path, body, signal, query } = request;
+    if (!PATH_PATTERN.test(path)) throw new Error('Unsupported QQ channel path');
     const token = await this.accessToken(signal);
-    const url = new URL(`https://${this.config.sandbox ? 'sandbox.' : ''}api.sgroup.qq.com${path}`);
-    for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
-    const response = await fetch(url, { method, signal: signal ?? AbortSignal.timeout(15000), headers: { Authorization: `QQBot ${token}`, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const response = await fetch(this.url(path, query), { method, signal: signal ?? AbortSignal.timeout(15000), headers: { Authorization: `QQBot ${token}`, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     if (!response.ok) throw new Error(`QQ channel HTTP ${response.status}`);
     const content = await response.text(); return content ? JSON.parse(content) as unknown : {};
+  }
+  private url(path: string, query?: Record<string, string>): URL {
+    const url = new URL(`https://${this.config.sandbox ? 'sandbox.' : ''}api.sgroup.qq.com${path}`);
+    for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
+    return url;
   }
 }

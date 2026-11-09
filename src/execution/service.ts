@@ -5,10 +5,26 @@ import type { ExperienceLog } from '../memory/ports.js';
 import type { ExecutionRepository, ExecutionRequests, ExecutionView, GoalAuthority } from './ports.js';
 import { IntentSchema, DirectActionSchema, type DirectAction, type Execution, type Intent } from './types.js';
 
+export interface ExecutionDependencies {
+  repository: ExecutionRepository;
+  capabilities: CapabilityAccess;
+  boundaries: Boundaries;
+  authority: GoalAuthority;
+  requests: ExecutionRequests;
+  experience: ExperienceLog;
+}
+
 export class ExecutionService implements ExecutionView {
-  constructor(private readonly repository: ExecutionRepository, private readonly capabilities: CapabilityAccess,
-    private readonly boundaries: Boundaries, private readonly authority: GoalAuthority,
-    private readonly requests: ExecutionRequests, private readonly experience: ExperienceLog) {}
+  private readonly repository: ExecutionRepository;
+  private readonly capabilities: CapabilityAccess;
+  private readonly boundaries: Boundaries;
+  private readonly authority: GoalAuthority;
+  private readonly requests: ExecutionRequests;
+  private readonly experience: ExperienceLog;
+  constructor(deps: ExecutionDependencies) {
+    this.repository = deps.repository; this.capabilities = deps.capabilities; this.boundaries = deps.boundaries;
+    this.authority = deps.authority; this.requests = deps.requests; this.experience = deps.experience;
+  }
   launch(raw: Intent, now: number): string {
     const intent = IntentSchema.parse(raw);
     this.authority.requireActiveGoal(intent.goalId);

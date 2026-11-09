@@ -32,35 +32,49 @@ export async function downloadPublicMedia(url: string, allowed: (host: string) =
     req.on('error', () => reject(new Error('Media transport failed'))); req.end();
   });
 }
+
+type Sniffer = { test: (b: Buffer) => boolean; mime: string };
+const AUDIO_SNIFFERS: Sniffer[] = [
+  { test: b => b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WAVE', mime: 'audio/wav' },
+  { test: b => b.subarray(0, 3).toString() === 'ID3' || (b[0] === 255 && ((b[1] ?? 0) & 224) === 224), mime: 'audio/mpeg' },
+  { test: b => b.subarray(0, 4).toString() === 'OggS', mime: 'audio/ogg' },
+  { test: b => b.subarray(0, 4).toString() === 'fLaC', mime: 'audio/flac' },
+];
+const IMAGE_SNIFFERS: Sniffer[] = [
+  { test: b => b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), mime: 'image/png' },
+  { test: b => b[0] === 255 && b[1] === 216 && b[2] === 255, mime: 'image/jpeg' },
+  { test: b => /^GIF8[79]a$/.test(b.subarray(0, 6).toString()), mime: 'image/gif' },
+  { test: b => b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP', mime: 'image/webp' },
+];
+/** 只按字节签名判断类型；扩展名和平台声明都不可信。 */
 export function mediaMime(bytes: Uint8Array, kind: string): string {
   const b = Buffer.from(bytes);
-  if (kind === 'audio') {
-    if (b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WAVE') return 'audio/wav';
-    if (b.subarray(0, 3).toString() === 'ID3' || (b[0] === 255 && ((b[1] ?? 0) & 224) === 224)) return 'audio/mpeg';
-    if (b.subarray(0, 4).toString() === 'OggS') return 'audio/ogg';
-    if (b.subarray(0, 4).toString() === 'fLaC') return 'audio/flac';
-  } else if (kind === 'image') {
-    if (b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return 'image/png';
-    if (b[0] === 255 && b[1] === 216 && b[2] === 255) return 'image/jpeg';
-    if (/^GIF8[79]a$/.test(b.subarray(0, 6).toString())) return 'image/gif';
-    if (b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP') return 'image/webp';
-  }
-  throw new Error('Unsupported or mismatched QQ media type');
+  const sniffer = (kind === 'audio' ? AUDIO_SNIFFERS : kind === 'image' ? IMAGE_SNIFFERS : []).find(entry => entry.test(b));
+  if (!sniffer) throw new Error('Unsupported or mismatched QQ media type');
+  return sniffer.mime;
 }
+
 export class NapCatMediaSource implements QqMediaSource {
   constructor(private readonly gateway: OneBotPort, private readonly roots: string[], private readonly pathMap: Record<string, string>) {
     if (roots.some(root => !isAbsolute(root) || [resolve('/'), homedir()].includes(resolve(root)))) throw new Error('QQ media roots must be narrow absolute directories');
   }
   async acquire(ref: MediaRef, signal: AbortSignal): Promise<MediaBytes> {
     if (ref.kind === 'video') throw new Error('QQ video understanding requires a separate video provider');
-    let bytes: Uint8Array | undefined;
-    if (ref.url && ref.kind === 'image') { try { bytes = await downloadPublicMedia(ref.url, qqMediaHost, signal); } catch { signal.throwIfAborted(); } }
-    if (!bytes) {
-      if (!ref.file) throw new Error('QQ media has no usable locator');
-      const result = await this.gateway.call(ref.kind === 'image' ? 'get_image' : 'get_record', { file: ref.file, ...(ref.kind === 'audio' ? { out_format: 'wav' } : {}) }, signal) as { url?: string; file?: string };
-      bytes = result.url ? await downloadPublicMedia(result.url, qqMediaHost, signal) : await this.readLocal(result.file ?? '', signal);
-    }
+    const bytes = await this.bytes(ref, signal);
     return { bytes, mimeType: mediaMime(bytes, ref.kind) };
+  }
+  private async bytes(ref: MediaRef, signal: AbortSignal): Promise<Uint8Array> {
+    const remote = await this.directRemote(ref, signal);
+    if (remote) return remote;
+    if (!ref.file) throw new Error('QQ media has no usable locator');
+    const result = await this.gateway.call(ref.kind === 'image' ? 'get_image' : 'get_record', { file: ref.file, ...(ref.kind === 'audio' ? { out_format: 'wav' } : {}) }, signal) as { url?: string; file?: string };
+    if (result.url) return downloadPublicMedia(result.url, qqMediaHost, signal);
+    return this.readLocal(result.file ?? '', signal);
+  }
+  /** 图片可以直接从事件里的公开 URL 取；失败则回落到 OneBot 的 file 引用。 */
+  private async directRemote(ref: MediaRef, signal: AbortSignal): Promise<Uint8Array | undefined> {
+    if (!ref.url || ref.kind !== 'image') return undefined;
+    try { return await downloadPublicMedia(ref.url, qqMediaHost, signal); } catch { signal.throwIfAborted(); return undefined; }
   }
   private async readLocal(file: string, signal: AbortSignal): Promise<Uint8Array> {
     signal.throwIfAborted();

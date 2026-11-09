@@ -141,6 +141,17 @@ Worker 串行推进作业，所有模型/网络调用在事务外进行。本地
 
 SQLite 租约用于防止意外双实例。本实现按单进程部署，不是分布式队列/多副本调度器。生产公开服务还需要部署层的 TLS、入口限制与平台连接配置。
 
+## 代码门槛
+
+结构约束用 [code-quality-gate](https://github.com/iceSheep2003/code-quality-gate) 执行，不靠人工评审：
+
+```sh
+npm run quality   # 静态门槛：圈/认知复杂度、嵌套、参数个数、语句数、依赖环
+npm run audit     # 完整审计：tsc + 40 个验收用例（JUnit）+ 静态门槛
+```
+
+`quality.config.json` 固定扫描范围（`src`）与阈值。写法上因此有两条硬约定：协作者超过 4 个的类传依赖对象，参数超过 4 个的函数传请求对象。参数个数就是“这个函数需要知道多少东西”的度量。
+
 ## 验证与限制
 
 `npm run check` 运行 TypeScript 编译、架构依赖检查、独立主体单元测试和行为/进程测试。详见 [ARCHITECTURE.md](./ARCHITECTURE.md) 中的验收对应。

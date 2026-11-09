@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "include": ["src"],
+  "requireTdd": false,
+  "dependencyCycles": true,
+  "audit": {
+    "checks": [
+      {
+        "id": "typecheck",
+        "title": "TypeScript 类型检查",
+        "command": ["node", "node_modules/typescript/bin/tsc", "-p", "tsconfig.json", "--noEmit"]
+      },
+      {
+        "id": "acceptance",
+        "title": "验收测试（node:test + tsx）",
+        "command": ["node", "scripts/junit.mjs"],
+        "report": ".quality/tests.junit.xml",
+        "format": "junit",
+        "metrics": [
+          { "name": "执行用例", "path": "tests", "min": 40 },
+          { "name": "失败数", "path": "failures", "equals": 0 },
+          { "name": "跳过数", "path": "skipped", "equals": 0 },
+          { "name": "成功率", "path": "successRate", "equals": 100 }
+        ]
+      }
+    ]
+  }
+}

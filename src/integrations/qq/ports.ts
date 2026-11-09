@@ -19,7 +19,11 @@ export interface QqMediaSource { acquire(ref: MediaRef, signal: AbortSignal): Pr
 export interface QqPerception { inspect(media: MediaBytes, question: string, signal: AbortSignal): Promise<string> }
 export interface QqSpeech { synthesize(text: string, style: string, signal: AbortSignal): Promise<string> }
 export interface QqMemeSource { tags(): string[]; pick(tag: string): Promise<string> }
-export interface QqChannelPort { request(method: string, path: string, body?: unknown, signal?: AbortSignal, query?: Record<string, string>): Promise<unknown> }
+/** 一次频道 API 调用；query 只允许字符串键值。 */
+export interface ChannelRequest {
+  method: string; path: string; body?: unknown; signal?: AbortSignal; query?: Record<string, string>;
+}
+export interface QqChannelPort { request(request: ChannelRequest): Promise<unknown> }
 export class OneBotError extends Error {}
 export class OneBotNotConnected extends OneBotError {}
 export class OneBotUncertain extends OneBotError {}

@@ -47,27 +47,46 @@ export class ReverseOneBotGateway implements OneBotPort {
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(this.options.port, this.options.host, () => { server.off('error', reject); resolve(); }); });
   }
   private receive(socket: WebSocket, raw: RawData): void {
-    let data: Record<string, unknown>;
-    try { const parsed: unknown = JSON.parse(raw.toString()); if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(); data = parsed as Record<string, unknown>; }
-    catch { this.stats.malformed++; return; }
-    if (data.echo !== undefined) {
-      const key = String(data.echo); const pending = this.pending.get(key);
-      if (!pending || pending.socket !== socket) return;
-      this.pending.delete(key); pending.clean();
-      if (data.status !== 'ok' || Number(data.retcode ?? 0) !== 0) pending.reject(new OneBotActionError(`OneBot action rejected (retcode ${String(data.retcode)})`));
-      else pending.resolve(data.data ?? {});
-      return;
-    }
-    if (socket !== this.socket || String(data.self_id ?? '') !== this.options.selfId || data.post_type === 'meta_event') return;
+    const data = this.parse(raw);
+    if (!data) return;
+    if (data.echo !== undefined) { this.settle(socket, data); return; }
+    if (!this.accepts(socket, data)) return;
+    this.enqueue(data);
+  }
+  private parse(raw: RawData): Record<string, unknown> | undefined {
+    try {
+      const parsed: unknown = JSON.parse(raw.toString());
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      return parsed as Record<string, unknown>;
+    } catch { this.stats.malformed++; return undefined; }
+  }
+  /** 调用回执按 echo 配对；拒绝的 action 不能当成成功。 */
+  private settle(socket: WebSocket, data: Record<string, unknown>): void {
+    const key = String(data.echo); const pending = this.pending.get(key);
+    if (!pending || pending.socket !== socket) return;
+    this.pending.delete(key); pending.clean();
+    if (data.status !== 'ok' || Number(data.retcode ?? 0) !== 0) { pending.reject(new OneBotActionError(`OneBot action rejected (retcode ${String(data.retcode)})`)); return; }
+    pending.resolve(data.data ?? {});
+  }
+  private accepts(socket: WebSocket, data: Record<string, unknown>): boolean {
+    return socket === this.socket && String(data.self_id ?? '') === this.options.selfId && data.post_type !== 'meta_event';
+  }
+  private enqueue(data: Record<string, unknown>): void {
     const key = data.group_id !== undefined ? `group:${String(data.group_id)}` : `private:${String(data.user_id ?? 'other')}`;
-    let lane = this.lanes.get(key);
-    if (!lane) {
-      if (this.lanes.size >= (this.options.maxLanes ?? 32)) { this.stats.dropped++; return; }
-      lane = { queue: [], active: false }; this.lanes.set(key, lane);
-    }
+    const lane = this.laneFor(key);
+    if (!lane) return;
     if (lane.queue.length >= (this.options.backlog ?? 64)) { this.stats.dropped++; return; }
     lane.queue.push(data); this.stats.accepted++;
     if (!lane.active) void this.drain(key, lane);
+  }
+  /** 每个会话一条 lane，保证同群消息按序处理；lane 数有上限。 */
+  private laneFor(key: string): { queue: Record<string, unknown>[]; active: boolean } | undefined {
+    const existing = this.lanes.get(key);
+    if (existing) return existing;
+    if (this.lanes.size >= (this.options.maxLanes ?? 32)) { this.stats.dropped++; return undefined; }
+    const lane = { queue: [], active: false };
+    this.lanes.set(key, lane);
+    return lane;
   }
   private async drain(key: string, lane: { queue: Record<string, unknown>[]; active: boolean }) {
     lane.active = true;

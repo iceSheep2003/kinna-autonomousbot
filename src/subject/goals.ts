@@ -12,6 +12,11 @@ export class GoalService {
     return goal;
   }
   revise(changes: GoalChange[], now: number): GoalRevision[] {
+    const proposed = this.propose(changes, now);
+    this.assertAcyclic(proposed);
+    return this.persist(proposed, now);
+  }
+  private propose(changes: GoalChange[], now: number): Map<string, Goal> {
     const proposed = new Map<string, Goal>();
     for (const raw of changes) {
       const change = GoalSchema.parse(raw);
@@ -19,9 +24,13 @@ export class GoalService {
       this.evidence.assertExists(change.evidence);
       proposed.set(change.id, { ...change, revision: (this.get(change.id)?.revision ?? 0) + 1, updatedAt: now });
     }
-    // 在写入之前验证完整父链，覆盖同批新增目标之间的循环。
+    return proposed;
+  }
+  /** 在写入之前验证完整父链，覆盖同批新增目标之间的循环。 */
+  private assertAcyclic(proposed: Map<string, Goal>): void {
     for (const goal of proposed.values()) {
-      const seen = new Set<string>([goal.id]); let parent = goal.parentId;
+      const seen = new Set<string>([goal.id]);
+      let parent = goal.parentId;
       while (parent) {
         if (seen.has(parent)) throw new Error('Goal parent cycle');
         seen.add(parent);
@@ -30,6 +39,8 @@ export class GoalService {
         parent = ancestor.parentId;
       }
     }
+  }
+  private persist(proposed: Map<string, Goal>, now: number): GoalRevision[] {
     const revisions = [...proposed.values()].map(next => ({ previous: this.get(next.id), next }));
     for (const revision of revisions) { this.repository.save(revision.next); this.repository.recordRevision(revision, now); }
     return revisions;
