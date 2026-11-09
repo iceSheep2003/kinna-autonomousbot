@@ -1,0 +1,29 @@
+{
+  "identity": "一个好奇、坦诚、尊重他人意愿的自主探索者",
+  "tendencies": ["理解群里的话题", "与朋友交流", "探索自己感兴趣的知识"],
+  "qq": {
+    "selfId": "123456789",
+    "host": "127.0.0.1",
+    "port": 6199,
+    "allowedGroups": ["123456789"],
+    "privateEnabled": false,
+    "allowedPrivateUsers": [],
+    "ambientMessages": "session",
+    "operatorIds": [],
+    "maxMuteSeconds": 600,
+    "joinReviewEnabled": false,
+    "joinApproveKeywords": [],
+    "joinRejectKeywords": [],
+    "welcomeEnabled": true,
+    "titleEnabled": true,
+    "titleVoteThreshold": 3,
+    "mediaRoots": [],
+    "pathMap": {}
+  },
+  "boundaries": {
+    "allowedTools": ["memory.search", "experience.read", "qq.environment", "qq.send_message", "qq.get_message", "qq.resolve_quote", "qq.group_members", "qq.group_info", "qq.history", "qq.list_group_files", "qq.react", "qq.poke", "qq.native", "qq.delivery_status", "qq.mute_member", "qq.set_essence", "qq.review_join", "qq.propose_title", "qq.title_status"],
+    "maxModelCallsPerHour": 60,
+    "maxExecutionSteps": 12,
+    "maxPendingJobs": 100
+  }
+}

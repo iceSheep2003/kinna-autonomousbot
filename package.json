@@ -1,0 +1,30 @@
+{
+  "name": "persistent-self-agent",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.json",
+    "start": "node dist/src/main.js",
+    "test": "tsx --test test/*.test.ts",
+    "check": "npm run build && npm test",
+    "demo": "tsx src/demo.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.6.2",
+    "ipaddr.js": "^2.5.0",
+    "ws": "^8.22.2",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/ws": "^8.18.2",
+    "code-quality-gate": "^0.8.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

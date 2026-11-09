@@ -1,0 +1,4 @@
+{
+  "plugins": ["./examples/local-environment.ts"],
+  "boundaries": { "allowedTools": ["memory.search", "experience.read", "local.explore"] }
+}

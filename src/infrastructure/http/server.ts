@@ -1,0 +1,39 @@
+import Fastify from 'fastify';
+import { z } from 'zod';
+import { timingSafeEqual } from 'node:crypto';
+import { adminCollections, type AdminApi } from '../../app/admin.js';
+import { EventSchema } from '../../runtime/types.js';
+
+export function createServer(api: AdminApi, token: string) {
+  const app = Fastify({ logger: true, bodyLimit: 32768 });
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.url === '/health') return;
+    const actual = Buffer.from(request.headers.authorization ?? '');
+    const expected = Buffer.from(`Bearer ${token}`);
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return reply.code(401).send({ error: 'Unauthorized' });
+  });
+  app.setErrorHandler((error, _request, reply) => {
+    const status = error instanceof z.ZodError ? 400 : (error as { statusCode?: number }).statusCode ?? 500;
+    reply.code(status).send({ error: status === 500 ? 'Request failed; inspect server logs' : error instanceof Error ? error.message : String(error) });
+    if (status === 500) app.log.error(error);
+  });
+  app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/v1/self', async () => api.self());
+  const collections = adminCollections;
+  for (const collection of collections) app.get(`/v1/${collection}`, async request => {
+    const { limit, offset } = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30), offset: z.coerce.number().int().min(0).default(0) }).parse(request.query);
+    return api.list(collection, limit, offset);
+  });
+  app.get('/v1/experiences', async request => {
+    const args = z.object({ after: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(100).default(30), source: z.string().optional() }).parse(request.query);
+    return api.experiences(args.after, args.limit, args.source);
+  });
+  app.get('/v1/sessions/:id/turns', async request => {
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    return api.turns(id, 20);
+  });
+  app.get('/v1/jobs', async () => api.jobs());
+  app.get('/v1/capabilities', async () => api.capabilities());
+  app.post('/v1/events', async (request, reply) => { const result = api.ingest(EventSchema.parse(request.body)); return reply.code(202).send(result); });
+  return app;
+}
