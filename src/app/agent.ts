@@ -9,7 +9,7 @@ import { AffectService } from '../subject/affect.js';
 import { ExperienceService } from '../memory/experience.js';
 import { MemoryService } from '../memory/service.js';
 import { ReflectionService } from '../memory/reflection.js';
-import { DreamService } from '../memory/dream.js';
+import { wireDream } from './memory-wiring.js';
 import { DreamGate, defaultDreamGate, HOUR, type DreamGateConfig } from '../memory/dream-gate.js';
 import { ExecutionService } from '../execution/service.js';
 import { ExecutionRunner } from '../execution/runner.js';
@@ -23,7 +23,7 @@ import { BudgetedModel } from '../runtime/budget.js';
 import { DecisionCommitter } from './decision-committer.js';
 import type { IncomingEvent } from '../runtime/types.js';
 import type { SchedulePolicy } from '../runtime/ports.js';
-import type { DreamLock, ExperienceLog } from '../memory/ports.js';
+import type { DreamLock, DreamReport, ExperienceLog } from '../memory/ports.js';
 export interface AgentOptions {
   identity: string; tendencies: string[]; boundaries: Boundaries;
   /** 关掉 personal 倾向（A/B 对照用）；身份唯一、相处底线不变。 */
@@ -32,6 +32,7 @@ export interface AgentOptions {
   personality?: Personality;
   reflectionIntervalMs: number; dreamIntervalMs: number;
   dreamCheckIntervalMs?: number; dreamGate?: Partial<DreamGateConfig>;
+  dreamOpportunities?: boolean; // 翻出的机会是否交给 self（不传为开启；对照/回滚时关掉）
   /** 跨进程互斥由调用方注入；不传则只在进程内互斥。 */
   dreamLock?: DreamLock;
   contextLimits?: Partial<ContextLimits>;
@@ -49,10 +50,7 @@ function localLock(): DreamLock {
 
 interface GateWiring { gate: DreamGate; checkDream: (now: number) => void }
 
-/**
- * 门控替代了「到点就整合」的盲定时器。周期只负责问一句「现在该不该整合」，
- * 真正耗时的整合仍由 dream 作业执行；锁在作业结束时释放，崩溃靠超时回收。
- */
+/** 门控替代「到点就整合」：周期只问「现在该不该整合」，整合仍由 dream 作业执行。 */
 function wireGate(input: { repositories: Repositories; experience: ExperienceLog; options: AgentOptions }): GateWiring {
   const { repositories, experience, options } = input;
   const gate = new DreamGate({
@@ -61,7 +59,6 @@ function wireGate(input: { repositories: Repositories; experience: ExperienceLog
     config: { ...defaultDreamGate, ...options.dreamGate, minHours: options.dreamGate?.minHours ?? options.dreamIntervalMs / HOUR },
   });
   let lastBlocked = '';
-  /** 只在「触发」或「拦截原因变化」时记一条，避免每 10 分钟写一行噪音。 */
   const checkDream = (now: number): void => {
     const decision = gate.check(now);
     if (decision.fire) {
@@ -70,13 +67,19 @@ function wireGate(input: { repositories: Repositories; experience: ExperienceLog
       lastBlocked = '';
       return;
     }
-    if (decision.blockedBy === lastBlocked) return;
+    if (decision.blockedBy === lastBlocked) return; // 只在触发或原因变化时记一条，别刷屏
     experience.record('runtime', 'dream.gate.blocked', { blockedBy: decision.blockedBy, snapshot: decision.snapshot }, now);
     lastBlocked = decision.blockedBy;
   };
   return { gate, checkDream };
 }
-/** 装配只做依赖注入；每个模块拿到的都是自己的 port 或依赖对象。 */
+/** 整合完成：机会单独成一条通知（self 醒来看的是「有事可做」），再报整合本身。 */
+function reportDream(report: DreamReport, wiring: { gate: DreamGate; inbox: Inbox }): void {
+  wiring.gate.markConsolidated(report.now);
+  if (report.opportunities.length) wiring.inbox.notify('dream.opportunity', { dreamId: report.id, opportunities: report.opportunities }, report.now);
+  wiring.inbox.notify('dream.completed', { dreamId: report.id, summary: report.summary, proposals: report.proposals, opportunities: report.opportunities.length }, report.now);
+}
+
 export function composeAgent(repositories: Repositories, provider: LanguageModel, capabilities: CapabilityRegistry, options: AgentOptions) {
   const r = repositories;
   const limits = { ...defaultContextLimits, ...options.contextLimits };
@@ -132,14 +135,9 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     committer: new DecisionCommitter({ subject, executions, scheduler, reflections, jobs: r.jobs, capacity: boundaries.maxPendingJobs }),
   });
   const runner = new ExecutionRunner({ repository: r.execution, service: executions, model, capabilities, memory, experience, boundaries, limits });
-  const dream = new DreamService({
-    repository: r.memory, experience, model, limits,
-    feedback: {
-      completed: (dreamId, summary, proposals, now) => {
-        gate.markConsolidated(now);
-        inbox.notify('dream.completed', { dreamId, summary, proposals }, now);
-      },
-    },
+  const dream = wireDream({
+    repositories: r, experience, model, limits, opportunities: options.dreamOpportunities,
+    feedback: { completed: report => reportDream(report, { gate, inbox }) },
   });
   worker.register('self', { prepare: (job, now) => self.prepare(job.payload, job.error, now) });
   worker.register('scene', { prepare: (job, now) => scenes.prepare(job.id, String(job.payload.sessionId), now), failed: (job, error, now) => scenes.failed(String(job.payload.sessionId), error, now) });

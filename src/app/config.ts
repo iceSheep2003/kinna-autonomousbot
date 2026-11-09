@@ -52,6 +52,8 @@ export const ConfigSchema = z.object({
   }).prefault({}),
   reflectionIntervalMs: z.number().int().min(10000).default(3600000),
   dreamIntervalMs: z.number().int().min(10000).default(86400000),
+  /** Dream 翻出「想做但还没做的事」交给 self；关闭后整合只更新记忆，不提机会。 */
+  dreamOpportunities: z.boolean().default(true),
   /** 多久检查一次 Dream 门控；检查本身很便宜（几次 stat + 一次经验读）。 */
   dreamCheckIntervalMs: z.number().int().min(1000).default(600000),
   /** 门控参数；minHours 不填时回落到 dreamIntervalMs，保持旧配置语义。 */

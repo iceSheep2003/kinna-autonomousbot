@@ -280,6 +280,7 @@ MAX_CALLS=6 GATE_MIN_EPISODES=200 GATE_SALIENCE=999 npx tsx scripts/evaluate.ts
   `sampling?.timeoutMs ?? timeoutMs ?? profile.timeoutMs` 把分支塞进了 `decide`；
   抽出 `timeoutOf()` 后通过。
 - `node scripts/junit.mjs`：JUnit 76 用例、0 失败、0 跳过。
+- 2026-11-10 Dream 新增「机会」：回放里额外产出 follow_up / check_in / share / observe 四类「想做但还没做的事」，过纯函数筛子（证据越界、内联原文、批内与跨批重复、排序上限）后经 `dream.opportunity` 事件进 self 的 inbox，由 self 决定做不做；`dreamOpportunities: false` 可关。**未调用真实收费模型**，机会的实际质量（会不会提得太频繁、提得对人）还没有真实对话数据。`tsc --noEmit` 干净；**99/99** 验收用例通过；`cqg check` PASS（98 文件 797 函数 0 违规）。
 - 2026-11-10 对齐 Claude 的 dream 过程：一次整合改为同一批经验回放 R1..Rn（R2 起带上一遍的 workspace，只做 revisions/retractions），收敛即停、最多 3 遍；提交按最终差异生成 write/retract/merge，`DreamVersion` 记录 `rounds / converged`。`tsc --noEmit` 干净；**84/84** 验收用例通过；`cqg check` PASS（94 文件 769 函数 0 违规）。**未调用真实收费模型**，所以「多轮回放是否真的提高保留率」尚无实测数据，保留率仍靠 `scripts/evaluate.ts` 离线跑。
 - `npm run audit`：**未能在本地完整跑完**，不是代码问题。沙箱的 safe-delete 拦截了 cqg
   收尾删除 `.code-quality-gate/run.lock`，报 `broker denied delete`；README / ARCHITECTURE

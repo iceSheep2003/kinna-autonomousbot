@@ -248,12 +248,14 @@ test('一批全是机器流水时不调模型、不叫醒 self，但游标照样
 
 /* ---------------------------- 回放与迭代 ---------------------------- */
 
-function replayService(rows: Experience[], script: unknown[], prior: Memory[] = []) {
+function replayService(rows: Experience[], script: unknown[], prior: Memory[] = [], options: { opportunities?: boolean } = {}) {
   const repository = new FakeMemory(0, prior);
   const model = new FakeModel(script);
-  const service = new DreamService({ repository, experience: new FakeExperience(rows), model,
-    feedback: { completed(): void {} }, limits: defaultContextLimits });
-  return { service, repository, model };
+  const delivered: Array<{ proposals: string[]; opportunities: unknown[] }> = [];
+  const service = new DreamService({ repository, experience: new FakeExperience(rows), model, limits: defaultContextLimits,
+    ...options,
+    feedback: { completed: report => { delivered.push({ proposals: report.proposals, opportunities: report.opportunities }); } } });
+  return { service, repository, model, delivered };
 }
 
 test('第 2 遍之前没有回放上下文；第 2 遍能看到第 1 遍写下的记忆，并据此修订', async () => {
@@ -371,4 +373,63 @@ test('之前的记忆也能在回放里被修订：拿旧记忆与本批素材�
   assert.deepEqual(stored.get('old')!.evidence, [1, 2, 3, 4]);
   assert.equal(stored.get('old')!.revision, 2);
   assert.equal((repository.published[0] as any).rounds, 3);
+});
+
+/* ---------------------------- 机会：交给 self 的素材 ---------------------------- */
+
+const livedRows = [
+  entry(1, 'group.message', { name: '小林', text: '复习节奏有点乱，先自己弄吧' }),
+  entry(2, 'note.promise', { about: '小林', text: '答应周末前帮她看看复习节奏' }, 'self'),
+];
+
+test('Dream 翻出的机会随完成通知投递给 self，并落在发布版本上', async () => {
+  const { service, repository, delivered } = replayService(livedRows, [
+    { memories: [{ id: 'm1', content: '小林想自己处理复习节奏', kind: 'observation', evidence: [1] }],
+      opportunities: [{ id: 'o1', kind: 'follow_up', about: '小林', why: '答应过周末前帮她看看复习节奏', urgency: 'today', evidence: [2] }] },
+    {},
+  ]);
+  const commit = await service.prepare('d1', undefined, 0);
+  commit();
+  assert.equal(delivered.length, 1);
+  assert.deepEqual(delivered[0]?.opportunities.map((item: any) => item.id), ['o1']);
+  assert.deepEqual((repository.published[0] as any).opportunities.map((item: any) => item.id), ['o1']);
+});
+
+test('证据指不到本批的机会不会被投递，但不会拖垮整次整合', async () => {
+  const { service, repository, delivered } = replayService(livedRows, [
+    { memories: [{ id: 'm1', content: '小林想自己处理复习节奏', kind: 'observation', evidence: [1] }],
+      opportunities: [{ id: 'o1', kind: 'check_in', about: '老周', why: '好久没听到消息', evidence: [999] }] },
+    {},
+  ]);
+  const commit = await service.prepare('d2', undefined, 0);
+  commit();
+  assert.deepEqual(delivered[0]?.opportunities, []);
+  assert.equal((repository.published[0] as any).memories?.length ?? repository.stored.length, 1);
+});
+
+test('回放的每一遍都能补机会，按 id 合并后只投递一次', async () => {
+  const { service, delivered } = replayService(livedRows, [
+    { memories: [{ id: 'm1', content: '小林想自己处理复习节奏', kind: 'observation', evidence: [1] }],
+      opportunities: [{ id: 'o1', kind: 'follow_up', about: '小林', why: '答应过周末前帮她看看复习节奏', urgency: 'when_idle', evidence: [2] }] },
+    { note: '想起还欠一个交代', opportunities: [
+      { id: 'o1', kind: 'follow_up', about: '小林', why: '答应过周末前帮她看看复习节奏', urgency: 'today', evidence: [2] },
+      { id: 'o2', kind: 'observe', about: '小林', why: '她说要自己弄，这几天别再主动问，等她主动', evidence: [1] },
+    ] },
+    {},
+  ]);
+  const commit = await service.prepare('d3', undefined, 0);
+  commit();
+  assert.deepEqual(delivered[0]?.opportunities.map((item: any) => [item.id, item.urgency]), [['o1', 'today'], ['o2', 'when_idle']]);
+});
+
+test('关掉机会后整合照常进行，只是不投递', async () => {
+  const { service, delivered, repository } = replayService(livedRows, [
+    { memories: [{ id: 'm1', content: '小林想自己处理复习节奏', kind: 'observation', evidence: [1] }],
+      opportunities: [{ id: 'o1', kind: 'follow_up', about: '小林', why: '答应过周末前帮她看看复习节奏', evidence: [2] }] },
+    {},
+  ], [], { opportunities: false });
+  const commit = await service.prepare('d4', undefined, 0);
+  commit();
+  assert.deepEqual(delivered[0]?.opportunities, []);
+  assert.ok(repository.stored.some(memory => memory.id === 'm1'));
 });

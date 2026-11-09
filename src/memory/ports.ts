@@ -1,5 +1,5 @@
 import type { DreamVersion, Experience, Memory, MemoryContext, MemoryProposal,
-  MemoryWriteOutcome, RecallRequest, Reflection } from './types.js';
+  MemoryWriteOutcome, Opportunity, RecallRequest, Reflection } from './types.js';
 export interface ExperienceRepository {
   append(source: string, kind: string, data: unknown, now: number): number;
   read(after: number, limit: number, source?: string): Experience[];
@@ -15,6 +15,8 @@ export interface MemoryRepository {
   publish(memory: Memory): void;
   cursor(): number;
   publishDream(version: DreamVersion): void;
+  /** 可选：最近几次整合版本，用来跨批次去重机会。老实现不提供时不跨批次去重。 */
+  recentDreams?(limit: number): DreamVersion[];
   /** 可选：硬过滤后的候选池。老实现不提供时，服务退回 search + recent。 */
   candidates?(request: RecallRequest): Memory[];
   /** 可选：被注入过的记录记一次访问，供排序的 access 信号使用。 */
@@ -40,7 +42,14 @@ export interface ExperienceView {
   assertExists(refs: number[]): void;
 }
 export interface ExperienceLog extends ExperienceView { record(source: string, kind: string, data: unknown, now: number): number }
-export interface DreamFeedback { completed(id: string, summary: string, proposals: string[], now: number): void }
+/**
+ * 整合完成时通知 self。机会（想做但还没做的事）是素材，不是命令：
+ * self 看到之后自己决定现在做、等一等还是不做。
+ */
+export interface DreamReport {
+  id: string; summary: string; proposals: string[]; now: number; opportunities: Opportunity[];
+}
+export interface DreamFeedback { completed(report: DreamReport): void }
 /** 门控自己的状态：上次整合、上次扫描、当天次数、各门控拦截次数。 */
 export interface DreamState {
   lastAt: number; lastScanAt: number; runsToday: number; runDay: number; blocked: Record<string, number>;

@@ -59,6 +59,12 @@ export class SqliteMemoryRepository implements MemoryRepository {
     this.db.put('dreams', version.id, version);
     this.db.put('meta', 'dreamCursor', version.cutoff);
   }
+  /** 整合 id 是随机 UUID，文档表排序不可用；取一批再按 at 排，量级是有限的历史整合。 */
+  recentDreams(limit: number): DreamVersion[] {
+    return this.db.list<DreamVersion>('dreams', 500)
+      .sort((a, b) => b.at - a.at)
+      .slice(0, Math.max(1, limit));
+  }
 }
 /** 门控状态与记忆内容分开存，避免「整理记忆」顺手改掉「何时该整理」。 */
 export class SqliteDreamStateRepository implements DreamStateRepository {

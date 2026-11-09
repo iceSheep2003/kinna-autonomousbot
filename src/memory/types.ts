@@ -56,6 +56,32 @@ export interface Reflection { id: string; sourceRefs: number[]; summary: string;
  * 迭代补上同一个能力：每轮都能看见上一轮写下的记忆，并修改、合并或撤回它们，
  * 而不是只做一次「读完 → 一次性输出」。回合对模型只读，修订才是它的产出。
  */
+/**
+ * Dream 回放里翻出来的「一次机会」：想做但还没做的事。
+ *
+ * Dream 只负责翻出来，不负责做——它看不到目标、对方在不在线、今天开过几次口。
+ * 机会作为素材进 self 的 inbox，由 self 在下一轮决定现在做、等一等还是不做。
+ */
+export const OPPORTUNITY_KINDS = ['follow_up', 'check_in', 'share', 'observe'] as const;
+export type OpportunityKind = (typeof OPPORTUNITY_KINDS)[number];
+export const OPPORTUNITY_URGENCIES = ['now', 'today', 'when_idle'] as const;
+export type OpportunityUrgency = (typeof OPPORTUNITY_URGENCIES)[number];
+
+/** 给出机会时，同一条证据最多说几次，避免一次回放把同一句话反复报成新机会。 */
+export const OPPORTUNITY_MAX_ITEMS = 6;
+
+export const OpportunitySchema = z.object({
+  id,
+  kind: z.enum(OPPORTUNITY_KINDS),
+  /** 关于谁 / 什么事，带社交锚点，self 才知道该找谁。 */
+  about: text.max(120),
+  why: text.max(600),
+  urgency: z.enum(OPPORTUNITY_URGENCIES).default('when_idle'),
+  /** 必须能指回本批具体经验；没有证据的「机会」就是凭空想出来的任务。 */
+  evidence: refs.min(1),
+});
+export type Opportunity = z.infer<typeof OpportunitySchema>;
+
 export interface DreamLoop {
   episode: { fromExclusive: number; throughInclusive: number; live: number[] };
   workspace: Array<{ id: string; content: string; kind: Memory['kind']; evidence: number[]; status: string }>;
@@ -75,6 +101,8 @@ export const DreamRoundSchema = z.object({
   })).max(30).optional(),
   /** 撤回：回放后发现这句不成立。 */
   retractions: z.array(z.object({ id, reason: text.max(500).optional() })).max(30).optional(),
+  /** 翻出来的机会：想做但还没做的事。只给 self 当素材，不会直接变成任何动作。 */
+  opportunities: z.array(OpportunitySchema).max(OPPORTUNITY_MAX_ITEMS).optional(),
   failedApproaches: z.array(text).max(20).optional(),
   proposals: z.array(text).max(12).optional(),
 });
@@ -89,6 +117,8 @@ export interface DreamVersion {
   status: 'published'; at: number;
   /** 几轮回放、是否收敛（模型主动说「没别的要改」）。旧版一次性整合没有这两个字段。 */
   rounds?: number; converged?: boolean;
+  /** 本次翻出来、已投递给 self 的机会（不含被合并、被内联原文挡掉、被去重的）。 */
+  opportunities?: Opportunity[];
 }
 
 export const MemoryProposalSchema = z.object({

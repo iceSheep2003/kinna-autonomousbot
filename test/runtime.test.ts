@@ -11,7 +11,8 @@ import { sqliteAdmin } from '../src/infrastructure/sqlite/admin.js';
 import { ConfigSchema } from '../src/app/config.js';
 import { UncertainOperation } from '../src/capabilities/ports.js';
 import { CapabilityRegistry } from '../src/capabilities/registry.js';
-import { registerSandbox } from '../src/integrations/builtin.js';
+import { registerNotes, registerSandbox } from '../src/integrations/builtin.js';
+import { ExperienceService } from '../src/memory/experience.js';
 import { DemoModel } from '../src/infrastructure/models/demo.js';
 import type { LanguageModel, ModelRequest } from '../src/shared/model.js';
 import type { Execution } from '../src/execution/types.js';
@@ -26,14 +27,79 @@ class ScriptedModel implements LanguageModel {
   constructor(private fn: (request: ModelRequest<any>) => unknown | Promise<unknown>) {}
   async decide<T>(request: ModelRequest<T>): Promise<T> { this.requests.push(request); return request.schema.parse(await this.fn(request)); }
 }
-function fixture(model: LanguageModel = new DemoModel(), path = ':memory:', overrides: Record<string, unknown> = {}) {
+function fixture(model: LanguageModel = new DemoModel(), path = ':memory:', overrides: Record<string, unknown> = {},
+  extra: (registry: CapabilityRegistry, experience: ReturnType<typeof sqliteRepositories>['experience']) => void = () => {}) {
   const store = new Store(path); const repositories = sqliteRepositories(store); const registry = new CapabilityRegistry(repositories.operations); registerSandbox(registry);
+  extra(registry, repositories.experience);
   const options = ConfigSchema.parse({ boundaries: { allowedTools: ['sandbox.observe'] }, ...overrides });
   const agent = composeAgent(repositories, model, registry, options);
   const runtime = agent.runtime;
   return { store, registry, runtime, agent, repositories, close() { runtime.stop(); store.close(); } };
 }
 const rest = { reflection: '当前没有必要行动，等新线索。' };
+
+test('Dream 翻出的机会通过 inbox 交到 self 手里：是素材，不是命令', async () => {
+  let dreamSeen = 0;
+  const selfContexts: any[] = [];
+  const f = fixture(new ScriptedModel(req => {
+    if (req.role === 'dream') {
+      const c = req.context as any;
+      if (c.replay) return {};
+      dreamSeen += 1;
+      // 只从本批经历里找机会：self 昨晚给自己留了张「答应过谁」的纸条。
+      const promise = c.experiences.find((e: any) => e.kind === 'note.promise');
+      return { memories: [], opportunities: promise ? [{ id: 'o1', kind: 'follow_up', about: '小林',
+        why: '答应过周末前帮她看看复习节奏', urgency: 'today', evidence: [promise.seq] }] : [] };
+    }
+    if (req.role === 'self') {
+      selfContexts.push(req.context);
+      // self 先写下承诺（L1），再请求 Dream；机会在下一次醒来时才会出现在 observations 里。
+      if (selfContexts.length === 1) return { ...rest, act: [{ name: 'self.note', goalId: undefined,
+        input: { about: '小林', text: '答应周末前帮她看看复习节奏', kind: 'promise' }, reason: '记下答应过的事' }], dream: true };
+      return rest;
+    }
+    return rest;
+  }), ':memory:', { boundaries: { allowedTools: ['sandbox.observe', 'self.note'] } },
+  // 工具要的是 ExperienceLog（带 record），不是仓储；生产里是 ExperienceService。
+  (registry, repository) => registerNotes(registry, new ExperienceService(repository)));
+  try {
+    // 第一轮：self 写下承诺并请求 Dream。
+    await f.runtime.tick(NOW);
+    // L1 纸条是异步执行出来的（先打执行，再写经验），先把执行跑完。
+    for (let i = 1; i <= 4; i++) await f.runtime.tick(NOW + i * 1000);
+    assert.ok(f.store.experiences(0).some(e => e.kind === 'note.promise'), '承诺应已写入经验日志');
+    // 再让 dream 作业跑：它会拿到那张纸条，翻出机会。
+    await f.runtime.tick(NOW + 5000);
+    assert.equal(dreamSeen, 1);
+    const completions = f.store.experiences(0).filter(e => e.kind === 'dream.opportunity');
+    assert.equal(completions.length, 1);
+    const delivered = (completions[0]?.data as { opportunities: Array<{ about: string }> }).opportunities;
+    assert.equal(delivered[0]?.about, '小林');
+    // 机会落在 self 的 inbox 里，下一次 self 上下文能读到；Dream 自己仍然只写记忆。
+    const inbox = f.store.experiences(0, 100, 'self.inbox').filter(e => e.kind === 'dream.opportunity');
+    assert.equal(inbox.length, 1);
+    assert.equal(f.store.list('memories').length, 0);
+  } finally { f.close(); }
+});
+
+test('关掉 dreamOpportunities 后，整合照常发布记忆但不给 self 投递机会', async () => {
+  let delivered = 0;
+  const f = fixture(new ScriptedModel(req => {
+    if (req.role !== 'dream') return rest;
+    const c = req.context as any;
+    if (c.replay) return {};
+    return { memories: [], opportunities: [{ id: 'o1', kind: 'check_in', about: '小林',
+      why: '答应过周末前帮她看看复习节奏', evidence: [c.experiences[0].seq] }] };
+  }), ':memory:', { dreamOpportunities: false });
+  try {
+    await f.runtime.tick(NOW);
+    f.store.enqueue('dream', 'dream', {}, NOW + 1000);
+    await f.runtime.tick(NOW + 1000);
+    delivered = f.store.experiences(0).filter(e => e.kind === 'dream.opportunity').length;
+    assert.equal(delivered, 0);
+    assert.ok(f.store.experiences(0).some(e => e.kind === 'dream.completed'));
+  } finally { f.close(); }
+});
 
 test('无外部任务：初始化 self 自行形成目标、执行、收到反馈，self 身份保持不变', async () => {
   const f = fixture();

@@ -4,7 +4,7 @@ import { defaultPersonality, personaText, SOCIAL_LINES, TONE_LABEL } from '../sr
 import { selfInstructions } from '../src/self/session.js';
 import { sceneInstructions } from '../src/execution/scene.js';
 import { executionInstructions } from '../src/execution/runner.js';
-import { DREAM_INSTRUCTIONS } from '../src/memory/dream.js';
+import { DREAM_INSTRUCTIONS } from '../src/memory/dream-prompts.js';
 import { ConfigSchema } from '../src/app/config.js';
 
 test('人格只有一份：self 与 scene 引用完全相同的那一段', () => {

@@ -101,6 +101,26 @@ Claude Code 的 Auto Dream 是一个**带工具的子代理**：它先概览、�
 - **提交**：按最终工作副本与库的差异生成 `write / retract / merge`，在 worker 的事务里一次落库；撤回与合并不删历史，把状态改成 `superseded`，读取侧按状态过滤。
 - **成本**：默认 `maxRounds = 3`（`DREAM_POLICY`，可注入覆盖）。R1 用 high 思考，R2 起降思考档并压低温度；`dreamBatch` 决定一批看多少经验，回放遍数决定这一批花几次模型调用。
 
+### 机会：Dream 只翻出来，self 决定做不做
+
+Dream 看不到目标、对方在不在线、今天开过几次口，所以它不产生任何动作，只把「想做但还没做的事」单独翻出来，作为素材进 self 的 inbox：
+
+| kind | 含义 | 例 |
+|---|---|---|
+| `follow_up` | 答应过谁什么、约好过什么，还没做到 | 答应周末前帮小林看复习节奏 |
+| `check_in` | 谁最近不太好，隔了几天还没有下文 | 小林连续两晚情绪低，没人再问过 |
+| `share` | 看到/想到一件东西，适合拿给某个人看 | 读到一篇和他最近的事有关的文章 |
+| `observe` | 值得继续留意，但现在还不用动 | 对方说想自己弄，先别主动问 |
+
+每条带 `id / about / why / urgency(now|today|when_idle) / evidence`。投递前过一道纯函数筛子（`memory/opportunity.ts`）：
+
+- **凭空**：evidence 指不到本批 lived 素材 → 挡；
+- **越界**：`about` / `why` 里整句搬了素材原文（等于替 self 把话说了）→ 挡；
+- **重复**：同一个人、同一件事已在列表里 → 留更急的那条；最近几次整合（`MemoryRepository.recentDreams`）报过的 → 挡；
+- 最多 6 条，按紧急度排序；被挡的原因写进 `dream.opportunity.rejected` 经验，便于事后看 Dream 为什么总在瞎提。
+
+投递路径：`DreamFeedback.completed(report)` → `inbox.notify('dream.opportunity', …)` → 下一次 self 醒来在 observations 里看到 → 由 self 用现有的 `act` / `schedules` 决定现在做、等一等还是不做。Dream 仍然拿不到 `SubjectService` 与执行服务；把 `dreamOpportunities` 设为 false 只关投递，整合照常发布记忆。
+
 ### 两级写入路径
 
 写记忆分成两层，**任务 session 不经过 self**：
@@ -205,7 +225,7 @@ G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状�
 
 `test/autonomy.test.ts` 验证三件事：长跑 150 轮后每轮上下文仍不超过 `ContextLimits`（增长只发生在经验日志，不在上下文）；决策越权时目标、执行、日程整体回滚；入口载荷超过 `payloadBudget` 时被拒绝且不落库。
 
-`test/dream.test.ts` 验证门控顺序（G1–G6 各自的拦截原因）、G3 节流确实阻止重复扫描、显著性权重排序（失败 > 纠正 > 新信息）、门控记账不回灌、锁在作业失败后能释放，以及「≥2 条证据」的校验规则；另覆盖回放：第 2 遍才拿到 `replay` 与上一遍的 workspace、收敛即停、撤回与合并的最终落库形态、回放修订同样受证据门槛约束、不能用新内容重写已有记忆、旧记忆能在回放里被改说法。
+`test/opportunity.test.ts` 验证机会筛子：证据越界、内联原文、批内与跨批重复、排序与上限、坏 schema 不拖垮整合；`test/runtime.test.ts` 端到端验证「L1 纸条 → Dream 翻出机会 → 进 self inbox」，以及关掉开关后不投递。dream.test.ts 验证门控顺序（G1–G6 各自的拦截原因）、G3 节流确实阻止重复扫描、显著性权重排序（失败 > 纠正 > 新信息）、门控记账不回灌、锁在作业失败后能释放，以及「≥2 条证据」的校验规则；另覆盖回放：第 2 遍才拿到 `replay` 与上一遍的 workspace、收敛即停、撤回与合并的最终落库形态、回放修订同样受证据门槛约束、不能用新内容重写已有记忆、旧记忆能在回放里被改说法。
 
 `scripts/evaluate.ts` 是接真实模型的长跑评估（压缩时间轴），产出 `.quality/eval/<label>/summary.json`。它需要 `.env` 里的 `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`，默认不给写能力，可用 `ENABLE_NOTE` 切换。它不进 CI，也不计入验收用例数。
 
