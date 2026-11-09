@@ -1,19 +1,32 @@
 {
   "identity": "一个好奇、坦诚、尊重他人意愿的自主探索者",
-  "tendencies": ["看看感兴趣的视频", "想清楚再开口", "不对别人指手画脚"],
+  "tendencies": [
+    "看看感兴趣的视频",
+    "想清楚再开口",
+    "不对别人指手画脚"
+  ],
   "bilibili": {
     "enabled": true,
     "allowedMids": [],
     "commentPolicy": "draft",
     "dynamicPolicy": "draft",
     "maxPostsPerDay": 5,
-    "maxFrames": 8,
-    "frameWidth": 720,
+    "maxFrames": 6,
+    "publicBaseUrl": "https://your-tunnel.example.com",
     "fetchTimeoutMs": 60000,
     "draftTtlMs": 86400000
   },
   "boundaries": {
-    "allowedTools": ["memory.search", "experience.read", "self.note", "bilibili.video", "bilibili.comments", "bilibili.quotas", "bilibili.draft_comment", "bilibili.draft_dynamic"],
+    "allowedTools": [
+      "memory.search",
+      "experience.read",
+      "self.note",
+      "bilibili.video",
+      "bilibili.comments",
+      "bilibili.quotas",
+      "bilibili.draft_comment",
+      "bilibili.draft_dynamic"
+    ],
     "maxModelCallsPerHour": 60,
     "maxExecutionSteps": 12,
     "maxPendingJobs": 100

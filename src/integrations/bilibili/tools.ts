@@ -1,18 +1,21 @@
 import { z } from 'zod';
 import type { CapabilityRegistrar } from '../../capabilities/ports.js';
 import type { BilibiliConfig, Draft } from './types.js';
-import type { BilibiliMessages, BilibiliVideo, FramePerception, FrameReader } from './ports.js';
+import type { BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
 import type { DraftQueue } from './drafts.js';
 import { canReadVideo } from './policy.js';
+import { pickMoments } from './heat.js';
 import { VIDEO_REF } from './types.js';
 
 export interface BilibiliToolsDeps {
   config: BilibiliConfig;
   video: BilibiliVideo;
   messages: BilibiliMessages;
-  perception?: FramePerception;
-  /** 抽帧 → 理解 → 清理临时文件；由应用层注入，集成层不碰文件系统。 */
-  reader?: FrameReader;
+  /** 按热度选点 + 无头浏览器截图；不配置时 bilibili.video 会明确报错。 */
+  shots?: VideoShots;
+  heat?: HeatSampler;
+  /** 截图文件对外可访问的地址前缀；DeepSeek 靠它下载图片。 */
+  publicBaseUrl?: string;
   drafts: DraftQueue;
 }
 
@@ -33,17 +36,22 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
   };
 
   registry.register({
-    name: 'bilibili.video', description: '看一个 B 站视频：按时间轴抽几帧读画面，结合标题和简介说清楚它讲了什么。抽帧是临时文件，读完即删。',
-    effect: 'read', input: z.object({ bvid: VIDEO, page: Page, question: z.string().min(1).max(500).default('这个视频在讲什么？'), frames: z.number().int().min(1).max(12).optional() }),
+    name: 'bilibili.video', description: '看一个 B 站视频：用高能进度条找出大家最在意的地方，在播放页截几张图，让你直接看图说清它讲了什么。返回截图地址和时长，图直接进你的上下文。',
+    effect: 'read', input: z.object({ bvid: VIDEO, page: Page, frames: z.number().int().min(1).max(8).optional() }),
     async run(raw, { signal }) {
-      const input = raw as { bvid: string; page: number; question: string; frames?: number };
-      if (!deps.perception) throw new Error('没有配置画面理解（bilibili.inspect 需要视觉模型或感知服务）');
+      const input = raw as { bvid: string; page: number; frames?: number };
+      if (!deps.shots) throw new Error('读视频需要无头浏览器（playwright）与截图地址配置');
       const meta = await video.meta(input.bvid, input.page, signal);
       guard(meta);
-      if (!deps.reader) throw new Error('抽帧读取器未配置');
-      const shot = await video.frames({ bvid: input.bvid, page: input.page, count: input.frames ?? config.maxFrames, width: config.frameWidth }, signal);
-      const seen = await deps.reader.describe({ bvid: input.bvid, frames: shot.frames, question: input.question, perception: deps.perception, signal });
-      return { bvid: meta.bvid, title: meta.title, owner: meta.ownerName, duration: meta.durationSeconds, frames: seen.frames, reading: seen.text };
+      const heat = deps.heat ? await deps.heat.heat({ bvid: meta.bvid, cid: meta.cid, signal }) : null;
+      const points = pickMoments({ durationSeconds: meta.durationSeconds, count: input.frames ?? config.maxFrames, heat });
+      const shot = await deps.shots.capture({ bvid: meta.bvid, timestamp: meta.durationSeconds, count: points.length, at: points.map(point => point.at), signal });
+      return {
+        bvid: meta.bvid, title: meta.title, owner: meta.ownerName, durationSeconds: meta.durationSeconds,
+        heatAvailable: heat !== null,
+        shots: shot.shots.map((item, index) => ({ ...item, why: points[index]?.why ?? '' })),
+        note: '图会随下一次发言进入上下文；描述画面里确实有的东西，不要替视频编主题。',
+      };
     },
   });
 

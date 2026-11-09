@@ -18,8 +18,9 @@ import { createBilibiliPlugin } from './integrations/bilibili/plugin.js';
 import { DraftQueue } from './integrations/bilibili/drafts.js';
 import { BilibiliConfigSchema } from './integrations/bilibili/types.js';
 import { BilibiliHttp, credentialsFromEnv } from './infrastructure/bilibili/client.js';
-import { BilibiliApi, frameReader } from './infrastructure/bilibili/media.js';
-import { visionFromEnv } from './infrastructure/bilibili/vision.js';
+import { BilibiliApi } from './infrastructure/bilibili/api.js';
+import { PbpHeat } from './infrastructure/bilibili/heat.js';
+import { BrowserShots } from './infrastructure/bilibili/shots.js';
 import { recentVideosOf } from './infrastructure/bilibili/space.js';
 import { SqliteBilibiliState } from './infrastructure/sqlite/bilibili.js';
 
@@ -47,9 +48,11 @@ const bilibiliApi = new BilibiliApi(bilibiliTransport);
 const bilibiliDrafts = new DraftQueue({ state: bilibiliState, config: bilibiliConfig, messages: bilibiliApi });
 if (bilibiliConfig.enabled) {
   plugins.push(createBilibiliPlugin({
-    config: bilibiliConfig, video: bilibiliApi, messages: bilibiliApi, drafts: bilibiliDrafts, reader: frameReader,
+    config: bilibiliConfig, video: bilibiliApi, messages: bilibiliApi, drafts: bilibiliDrafts,
+    heat: new PbpHeat(bilibiliTransport),
+    ...(bilibiliConfig.publicBaseUrl ? { publicBaseUrl: bilibiliConfig.publicBaseUrl,
+      shots: new BrowserShots({ publicBaseUrl: bilibiliConfig.publicBaseUrl, outputDir: resolve(process.env.BILIBILI_SHOT_DIR ?? 'data/public/shots') }) } : {}),
     recentVideos: process.env.BILIBILI_MID ? recentVideosOf(bilibiliTransport, process.env.BILIBILI_MID) : undefined,
-    ...(visionFromEnv(process.env) ? { perception: visionFromEnv(process.env) } : {}),
   }));
 }
 const model = new OpenAICompatibleModel({ baseUrl: process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1', apiKey: LLM_API_KEY, model: LLM_MODEL, profiles: profilesFromEnv(process.env) });

@@ -280,6 +280,7 @@ MAX_CALLS=6 GATE_MIN_EPISODES=200 GATE_SALIENCE=999 npx tsx scripts/evaluate.ts
   `sampling?.timeoutMs ?? timeoutMs ?? profile.timeoutMs` 把分支塞进了 `decide`；
   抽出 `timeoutOf()` 后通过。
 - `node scripts/junit.mjs`：JUnit 76 用例、0 失败、0 跳过。
+- 2026-11-10 读视频改为「高能进度条选点 + 无头浏览器截播放页 + DeepSeek 直接看图」：不再需要 ffmpeg，也不再需要另配视觉模型端点。选点在高光前 4 秒（包袱抖开前的完整画面），无热力数据时均匀采样。**未连真实网络跑过**：截图对播放页 DOM 的依赖、B 站风控对无头浏览器的拦截、以及 DeepSeek 下载截图 URL 的成功率都没有实测；`.env` 里的 key 当前返回 402 Insufficient Balance，连一次真实多模态请求也没发出，只验证了请求形状（图片只进 user 消息、URL 优先）。`tsc --noEmit` 干净；**122/122** 验收用例通过；`cqg check` / `cqg audit` PASS。
 - 2026-11-10 B 站接入：抽帧读视频（帧理解完即删）、读评论、评论/动态只出草稿等 owner 批准（含每日额度与过期）。**未连接真实 B 站账号**，所有 B 站测试用假传输与假模型，`bilibili.video` 的真实抽帧速度、视觉模型质量、以及「草稿会不会提得太频繁」都没有实测。`tsc --noEmit` 干净；**117/117** 验收用例通过；`cqg check` PASS。
 - 2026-11-10 Dream 新增「机会」：回放里额外产出 follow_up / check_in / share / observe 四类「想做但还没做的事」，过纯函数筛子（证据越界、内联原文、批内与跨批重复、排序上限）后经 `dream.opportunity` 事件进 self 的 inbox，由 self 决定做不做；`dreamOpportunities: false` 可关。**未调用真实收费模型**，机会的实际质量（会不会提得太频繁、提得对人）还没有真实对话数据。`tsc --noEmit` 干净；**99/99** 验收用例通过；`cqg check` PASS（98 文件 797 函数 0 违规）。
 - 2026-11-10 对齐 Claude 的 dream 过程：一次整合改为同一批经验回放 R1..Rn（R2 起带上一遍的 workspace，只做 revisions/retractions），收敛即停、最多 3 遍；提交按最终差异生成 write/retract/merge，`DreamVersion` 记录 `rounds / converged`。`tsc --noEmit` 干净；**84/84** 验收用例通过；`cqg check` PASS（94 文件 769 函数 0 违规）。**未调用真实收费模型**，所以「多轮回放是否真的提高保留率」尚无实测数据，保留率仍靠 `scripts/evaluate.ts` 离线跑。

@@ -26,8 +26,23 @@ export interface ModelSampling {
   timeoutMs?: number;
 }
 
+/**
+ * 一张能给模型看的图。优先用外部 URL：DeepSeek 自己下载，省掉本地编码和带宽；
+ * 没有可用 URL 时才退回本地文件（`data:` 内联）。
+ */
+export interface ModelImage {
+  url?: string;
+  path?: string;
+  /** low = 先压到 512×512，细节不重要时更快更省；1000px 宽的视频帧用 high 才看得清字。 */
+  detail?: 'low' | 'high';
+  /** 这张图是什么，写进提示词，模型才知道该看哪张。 */
+  label?: string;
+}
+
 export interface ModelRequest<T> {
   role: ModelRole; instructions: string; context: unknown; schema: z.ZodType<T>;
+  /** 图片只进 user 消息；system/assistant 里带图会被 DeepSeek 400 拒绝。 */
+  images?: ModelImage[];
   /** 兼容旧调用：单次超时，优先于角色档位，但低于 sampling.timeoutMs。 */
   timeoutMs?: number;
   /** 单请求覆盖，例如临时关掉某次调用的思考或放宽输出。 */

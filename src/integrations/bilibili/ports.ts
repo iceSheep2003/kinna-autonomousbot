@@ -35,8 +35,6 @@ export interface MediaClip { path: string; cleanup(): void }
 
 export interface BilibiliVideo {
   meta(bvid: string, page: number, signal: AbortSignal): Promise<VideoMeta>;
-  /** 抽帧：返回本次实际取到的帧数与容器内路径；模型看不到字节。 */
-  frames(input: { bvid: string; page: number; count: number; width: number; at?: number[] }, signal: AbortSignal): Promise<{ frames: string[]; durationSeconds: number }>;
 }
 
 export interface BilibiliMessages {
@@ -45,14 +43,24 @@ export interface BilibiliMessages {
   postDynamic(input: { content: string }, signal: AbortSignal): Promise<{ dynamicId: string }>;
 }
 
-/** 帧 → 理解。实现方（视觉模型或外部感知服务）返回文字，不返回原始字节。 */
-export interface FramePerception {
-  describe(input: { bvid: string; frames: string[]; question: string }, signal: AbortSignal): Promise<string>;
+/**
+ * 按热度选点，再让无头浏览器在播放页截图。
+ *
+ * 为什么不用 ffmpeg 抽帧：本地抽帧要装编解码器、要下载视频流，还得把图编码进请求；
+ * B 站的播放页本身就是播放器，截图是浏览器自带的能力，截出来的图可以直接给
+ * DeepSeek 看（它接受外部 URL 与多图输入）。这一层只返回稳定的图片 URL。
+ */
+export interface VideoShots {
+  /** 截几个点；at 为空时由实现按热度自行选点。 */
+  capture(input: { bvid: string; timestamp: number; count: number; at?: number[]; signal: AbortSignal }): Promise<{ shots: Array<{ url: string; at: number }>; durationSeconds: number }>;
 }
 
-/** 抽帧后的理解与清理由这个端口统一负责，集成层不直接读删文件。 */
-export interface FrameReader {
-  describe(input: { bvid: string; frames: string[]; question: string; perception: FramePerception; signal: AbortSignal }): Promise<{ text: string; frames: number }>;
+/**
+ * 高能进度条：B 站按采样间隔统计「每秒弹幕发送量」，也就是观众在哪些时刻最密集。
+ * 它不是播放量的热度，而是**注意力**的热度：大部分人拖回去看、或者发弹幕的时刻都在里面。
+ */
+export interface HeatSampler {
+  heat(input: { bvid: string; cid: number; signal: AbortSignal }): Promise<{ stepSeconds: number; points: number[] } | null>;
 }
 
 export type { Draft, PostKind, PostQuota, VideoMeta };

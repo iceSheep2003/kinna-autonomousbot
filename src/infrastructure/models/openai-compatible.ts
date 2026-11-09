@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { LanguageModel, ModelRequest } from '../../shared/model.js';
+import { readFile } from 'node:fs/promises';
+import type { LanguageModel, ModelImage, ModelRequest } from '../../shared/model.js';
 import type { ModelProfile, ProfileOverrides } from './profiles.js';
 import { resolveProfile } from './profiles.js';
 
@@ -36,6 +37,29 @@ function timeoutOf(request: { sampling?: { timeoutMs?: number }; timeoutMs?: num
   return single ?? profile.timeoutMs;
 }
 
+const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' };
+
+/** 图片 URL 太长或没有 URL 时退回内联；格式按扩展名猜，猜不到按 jpeg。 */
+async function imageSource(image: ModelImage): Promise<string> {
+  if (image.url && image.url.length <= 8192) return image.url;
+  if (!image.path) throw new Error('图片既没有可用 URL 也没有本地文件');
+  const bytes = await readFile(image.path);
+  const ext = image.path.slice(image.path.lastIndexOf('.')).toLowerCase();
+  return `data:${MIME[ext] ?? 'image/jpeg'};base64,${bytes.toString('base64')}`;
+}
+
+/** 一条 user 消息：先文字，再逐张图；每张图前面标一句「这是哪张」。 */
+async function userContent(request: ModelRequest<unknown>): Promise<unknown> {
+  const text = JSON.stringify(request.context);
+  if (!request.images?.length) return text;
+  const blocks: unknown[] = [{ type: 'text', text }];
+  for (const [index, image] of request.images.entries()) {
+    if (image.label) blocks.push({ type: 'text', text: `图 ${index + 1}：${image.label}` });
+    blocks.push({ type: 'image_url', image_url: { url: await imageSource(image), ...(image.detail ? { detail: image.detail } : {}) } });
+  }
+  return blocks;
+}
+
 export class OpenAICompatibleModel implements LanguageModel {
   constructor(private readonly config: OpenAICompatibleConfig) {}
   async decide<T>(request: ModelRequest<T>): Promise<T> {
@@ -52,7 +76,7 @@ export class OpenAICompatibleModel implements LanguageModel {
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: `${request.instructions}\nOutput JSON matching this JSON Schema:\n${JSON.stringify(schema)}` },
-          { role: 'user', content: JSON.stringify(request.context) },
+          { role: 'user', content: await userContent(request) },
         ],
       }),
     });

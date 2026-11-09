@@ -1,15 +1,17 @@
 import test from 'node:test';
+import { z } from 'zod';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BilibiliConfigSchema, type Draft, type PostQuota } from '../src/integrations/bilibili/types.js';
-import type { BilibiliMessages, FramePerception, MediaClip, VideoMeta } from '../src/integrations/bilibili/ports.js';
+import type { BilibiliMessages, VideoMeta } from '../src/integrations/bilibili/ports.js';
 import { DraftQueue } from '../src/integrations/bilibili/drafts.js';
-import { canApprove, checkContent, exploreRange, explainCode, groundedPoints, isExpired } from '../src/integrations/bilibili/policy.js';
-import { describeFrames, framesWith } from '../src/infrastructure/bilibili/media.js';
+import { canApprove, checkContent, explainCode, isExpired } from '../src/integrations/bilibili/policy.js';
+import { evenPoints, pickMoments, stamp } from '../src/integrations/bilibili/heat.js';
+import { PbpHeat } from '../src/infrastructure/bilibili/heat.js';
 import type { BilibiliTransport } from '../src/integrations/bilibili/ports.js';
-import { translateVideo } from '../src/app/video-watch.js';
+import { watchVideo } from '../src/app/video-watch.js';
 import { createServer } from '../src/infrastructure/http/server.js';
 import { readFileSync } from 'node:fs';
 import { CapabilityRegistry } from '../src/capabilities/registry.js';
@@ -151,54 +153,63 @@ test('拒绝的草稿不会再被批准', () => {
   void isExpired;
 });
 
-/* ------------------------------ 抽帧读视频 ------------------------------ */
+/* ---------------------- 热度选点与截图读视频 ---------------------- */
 
-test('抽帧避开片头片尾，按时间点取帧，读完统一清理临时文件', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'bili-test-'));
-  const clips: Array<{ start: number; end: number }> = [];
-  const transport: BilibiliTransport = {
-    request: async <T>() => ({ dash: { video: [{ baseUrl: 'https://upos.example/1.m4s', bandwidth: 100 }] } }) as T,
-    clip: async request => {
-      clips.push({ start: request.startSeconds, end: request.endSeconds });
-      const path = join(request.dir ?? dir, request.name ?? 'frame.jpg');
-      writeFileSync(path, 'fake-jpeg');
-      return { path, cleanup() {} } as MediaClip;
-    },
-  };
-  const meta: VideoMeta = { bvid: 'BV1xx4y1x7xx', aid: 1, cid: 2, title: 't', ownerMid: '9', ownerName: 'u', durationSeconds: 100, desc: '', pages: [] };
-  const seen: string[] = [];
-  const perception: FramePerception = { describe: async input => { seen.push(...input.frames); return '画面里是教学课，白板上写着公式'; } };
-  const frames = await framesWith(transport)({ bvid: meta.bvid, cid: meta.cid, durationSeconds: meta.durationSeconds, count: 4, signal: AbortSignal.timeout(5000) });
-  // 前 5% 与后 5% 不取：100 秒视频的帧点落在 5..95 之间。
-  assert.ok(clips.every(c => c.start >= 5 && c.start <= 95));
-  assert.equal(frames.length, 4);
-  await describeFrames({ perception, bvid: meta.bvid, frames, question: '讲什么', signal: AbortSignal.timeout(5000) });
-  assert.equal(seen.length, 4);
-  // 帧是临时文件：理解完就删，不留画面在磁盘上。
-  assert.ok(frames.every((file: string) => !existsSync(file)));
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test('抽帧时间点落在正文区间内，按帧数均匀分布', () => {
-  const points = exploreRange(100, 4);
+test('没有热力数据时退回均匀采样，点落在正文区间内', () => {
+  const points = evenPoints(100, 4);
   assert.equal(points.length, 4);
-  assert.ok(points.every(at => at >= 5 && at <= 95));
-  assert.deepEqual([...points].sort((a, b) => a - b), points);
+  assert.ok(points.every(point => point.at >= 2 && point.at <= 98));
+  assert.equal(points[0]?.why, '均匀取样');
 });
 
-test('细节必须被画面支撑：画面里没写到的细节被丢掉', () => {
-  const result = groundedPoints(['白板上写着公式', '主讲人穿着红色外套'], '画面里是教学课，白板上写着公式');
-  assert.deepEqual(result.kept, ['白板上写着公式']);
-  assert.deepEqual(result.dropped, ['主讲人穿着红色外套']);
+test('有热力数据时在高光前几秒截图，而不是在高光那一刻', () => {
+  // 每 3 秒一个采样点，第 10 个点（第 30 秒）弹幕最密。
+  const points = Array.from({ length: 30 }, (_, index) => (index === 10 ? 9000 : index === 20 ? 4000 : 100));
+  const chosen = pickMoments({ durationSeconds: 90, count: 2, heat: { stepSeconds: 3, points } });
+  assert.equal(chosen.length, 2);
+  assert.equal(chosen[0]?.at, 26, '30 秒的高光要往前退 4 秒，取包袱抖开前的画面');
+  assert.match(chosen[0]?.why ?? '', /高光前 4 秒/);
 });
 
-test('translateVideo 只喂「检索到的几条评论」和「画面理解」，不把整页评论倒进去', async () => {
-  const calls: Array<{ context: unknown; instructions: string }> = [];
-  const result = await translateVideo({
-    model: { decide: async <T>(request: { context: unknown; instructions: string }) => { calls.push(request); return { reading: '这是一节课', keyPoints: ['公式'], tone: '认真', worthReplying: '可以问一个问题' } as T; } },
-    material: { title: '标题', owner: 'UP', duration: 100, frameReading: '白板上写着公式', comments: [{ user: 'a', text: '好' }] },
+test('两个热点挨得太近只截一张，避免同一个镜头截两次', () => {
+  const points = Array.from({ length: 30 }, (_, index) => (index === 10 ? 9000 : index === 11 ? 8000 : 100));
+  const chosen = pickMoments({ durationSeconds: 90, count: 4, heat: { stepSeconds: 3, points } });
+  const hashes = chosen.map(point => Math.round(point.at));
+  assert.equal(new Set(hashes).size, hashes.length);
+  assert.ok(chosen.every((point, index) => index === 0 || Math.abs(point.at - chosen[index - 1]!.at) >= 12));
+});
+
+test('热点不够时用均匀点补位，并标出来哪些是补的', () => {
+  const points = Array.from({ length: 30 }, (_, index) => (index === 10 ? 9000 : 0));
+  const chosen = pickMoments({ durationSeconds: 90, count: 3, heat: { stepSeconds: 3, points } });
+  assert.equal(chosen.length, 3);
+  assert.ok(chosen.some(point => point.why === '均匀补位'));
+  assert.equal(chosen.find(point => point.why === '均匀补位')?.why, '均匀补位');
+});
+
+test('热力接口失败时返回 null，不因此读不了视频', async () => {
+  const failing = { request: async () => { throw new Error('HTTP 412 风控'); } };
+  const heat = new PbpHeat(failing as never);
+  assert.equal(await heat.heat({ bvid: 'BV1xx4y1x7xx', cid: 1, signal: AbortSignal.timeout(1000) }), null);
+});
+
+test('时间点格式化：毫秒进分钟', () => {
+  assert.equal(stamp(0), '00:00');
+  assert.equal(stamp(65), '01:05');
+  assert.equal(stamp(3599), '59:59');
+});
+
+test('看视频时把截图地址当多模态输入交给模型，不经过本地视觉服务', async () => {
+  const calls: Array<{ images?: Array<{ url?: string; label?: string }>; instructions: string }> = [];
+  const result = await watchVideo({
+    model: { decide: async <T>(request: { images?: Array<{ url?: string; label?: string }>; instructions: string }) => { calls.push(request); return { reading: '一节课', keyPoints: ['白板公式'], tone: '认真', worthReplying: '' } as T; } },
+    material: { bvid: 'BV1xx4y1x7xx', title: '标题', owner: 'UP', durationSeconds: 90,
+      shots: [{ url: 'https://example.com/shots/a.jpg', at: 26, why: '高光前 4 秒' }, { url: 'https://example.com/shots/b.jpg', at: 60, why: '均匀补位' }],
+      comments: [{ user: 'a', text: '好' }] },
   });
   assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0]?.images?.map(image => image.url), ['https://example.com/shots/a.jpg', 'https://example.com/shots/b.jpg']);
+  assert.match(calls[0]?.images?.[0]?.label ?? '', /00:26/);
   assert.equal(result.keyPoints.length, 1);
   assert.doesNotMatch(calls[0]!.instructions, /cookie/i);
 });
@@ -269,13 +280,57 @@ test('配置示例真实可用：schema 能过，列出的 B 站工具都注册�
   const registry = new CapabilityRegistry(operations);
   const f = queue();
   registerBilibiliTools(registry, {
-    config: config.bilibili!, drafts: f.queue, reader: { describe: async () => ({ text: '', frames: 0 }) },
-    video: { meta: async () => { throw new Error('unused'); }, frames: async () => ({ frames: [], durationSeconds: 0 }) },
-    messages: f.messages,
+    config: config.bilibili!, drafts: f.queue, messages: f.messages,
+    video: { meta: async () => { throw new Error('unused'); } },
   });
   const names = config.boundaries.allowedTools.filter(name => name.startsWith('bilibili.'));
   assert.ok(names.length >= 4);
   assert.doesNotThrow(() => registry.validate(names, names));
   // 注册目录里的每一项都要能被模型看到 schema，不能只是有名字。
   assert.equal(registry.catalog(names).length, names.length);
+});
+
+/* ------------------------------ 多模态请求格式 ------------------------------ */
+
+test('图片进 user 消息的 content blocks：URL 优先，每张图前有一行说明', async () => {
+  const { OpenAICompatibleModel } = await import('../src/infrastructure/models/openai-compatible.js');
+  const original = globalThis.fetch; let sent: any;
+  globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+    sent = JSON.parse(init.body as string);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ result: 'ok' }) } }] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const model = new OpenAICompatibleModel({ baseUrl: 'https://example.invalid/v1', apiKey: 'secret', model: 'deepseek-flash' });
+    await model.decide({
+      role: 'execution', instructions: '看图', context: { title: '视频' }, schema: z.object({ result: z.string() }),
+      images: [
+        { url: 'https://example.com/a.jpg', detail: 'high', label: '第 00:26 帧' },
+        { url: 'https://example.com/b.jpg' },
+      ],
+    });
+    const user = sent.messages.find((message: { role: string }) => message.role === 'user');
+    assert.ok(Array.isArray(user.content), '有图时 user content 必须是 block 数组');
+    const types = user.content.map((block: { type: string }) => block.type);
+    assert.deepEqual(types, ['text', 'text', 'image_url', 'image_url']);
+    assert.equal(user.content[2].image_url.url, 'https://example.com/a.jpg');
+    assert.equal(user.content[2].image_url.detail, 'high');
+    // 图片不能被塞进 system 消息：DeepSeek 对 system 里的图返回 400。
+    const system = sent.messages.find((message: { role: string }) => message.role === 'system');
+    assert.equal(typeof system.content, 'string');
+  } finally { globalThis.fetch = original; }
+});
+
+test('没有图时 user content 仍是字符串，避免改变纯文本请求的形状', async () => {
+  const { OpenAICompatibleModel } = await import('../src/infrastructure/models/openai-compatible.js');
+  const original = globalThis.fetch; let sent: any;
+  globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+    sent = JSON.parse(init.body as string);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ result: 'ok' }) } }] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const model = new OpenAICompatibleModel({ baseUrl: 'https://example.invalid/v1', apiKey: 'secret', model: 'deepseek-flash' });
+    await model.decide({ role: 'execution', instructions: 'x', context: { a: 1 }, schema: z.object({ result: z.string() }) });
+    const user = sent.messages.find((message: { role: string }) => message.role === 'user');
+    assert.equal(typeof user.content, 'string');
+  } finally { globalThis.fetch = original; }
 });

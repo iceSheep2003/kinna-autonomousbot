@@ -11,9 +11,10 @@ export const BilibiliConfigSchema = z.object({
   dynamicPolicy: z.enum(['off', 'draft', 'on']).default('draft'),
   /** 一天最多真正发出多少条评论/动态，防止一次回放把话说完。 */
   maxPostsPerDay: z.number().int().min(0).max(50).default(5),
-  /** 抽帧读视频：最多看几帧、用哪个清晰度（DASH 下无效但保留给 MP4 回退）。 */
-  maxFrames: z.number().int().min(1).max(24).default(8),
-  frameWidth: z.number().int().min(160).max(1280).default(720),
+  /** 读视频时最多截几张图。每张图按 DeepSeek 的计费上限约 1024 token。 */
+  maxFrames: z.number().int().min(1).max(8).default(6),
+  /** 截图文件对外可访问的地址前缀；DeepSeek 自己下载，所以必须是公网可达的。 */
+  publicBaseUrl: z.string().url().optional(),
   /** 传给 ffmpeg 的超时；视频流最长两分钟有效，下载必须快。 */
   fetchTimeoutMs: z.number().int().min(5000).max(120000).default(60000),
   /** 评论草稿 > 24h 自动过期，避免深夜的草稿白天还被人批准。 */

@@ -138,13 +138,15 @@ QQ/NapCat 平台能力已迁入，配置和线上核对清单见 [QQ-MIGRATION.m
 
 B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**说得出口**。前两件是读，最后一件是公开写，所以两者的门槛不一样。
 
-- `bilibili.video`：按时间轴抽帧（避开片头片尾），交给视觉模型描述画面，再结合标题/简介写成观看笔记。画面里没出现过的细节会被丢掉——读视频最容易犯的错就是看图说话。帧是临时文件，理解完即删。
+- `bilibili.video`：先读**高能进度条**（B 站按秒统计的弹幕量，代表观众注意力在哪），在每个热点**前 4 秒**用无头浏览器在播放页截一张图；没有热力数据（新视频）时退回均匀采样。截图地址直接作为图片交给 DeepSeek 看（它自己下载 URL，无需本地视觉模型）；图片只进 user 消息。
 - `bilibili.comments`：读一个视频的评论区（按热度或时间），包括别人对你视频的评论。配置 `BILIBILI_MID` 后还会轮询自己视频下的新评论，送进对应视频的场景会话。
 - `bilibili.draft_comment` / `bilibili.draft_dynamic`：**只出草稿**。模型没有任何路径能自己把内容发到公开平台上；草稿存在本地库，带过期时间（默认 24h）。
 - 批准：只有持 `API_TOKEN` 的人能调 `POST /v1/bilibili/drafts/:id/approve`。真正发出还要过当天额度（`maxPostsPerDay`），失败不扣额度、不自动重发。
 - `commentPolicy` / `dynamicPolicy`：`off` 连草稿都不建，`draft`（默认）出草稿等人批，`on` 同样要显式批准请求。
 
-登录态只从环境读（`BILIBILI_SESSDATA` + `BILIBILI_BILI_JCT`），不落配置文件、不进模型上下文；写请求的 `csrf` 由传输层自动补上，调用方看不到 cookie。配置示例见 `agent.bilibili.example.json`。抽帧依赖本机 `ffmpeg`，画面理解需要一个 OpenAI 兼容的视觉模型（`BILIBILI_VISION_*`）。
+登录态只从环境读（`BILIBILI_SESSDATA` + `BILIBILI_BILI_JCT`），不落配置文件、不进模型上下文；写请求的 `csrf` 由传输层自动补上，调用方看不到 cookie。配置示例见 `agent.bilibili.example.json`。
+
+读视频不需要本地模型，也不需要 ffmpeg：`npm i -D playwright && npx playwright install chromium` 装上无头浏览器，把 `bilibili.publicBaseUrl` 配成截图目录能被公网访问的地址（DeepSeek 会去下载图片），图片就随请求直接进 `deepseek-flash` 的多模态输入。每张图约 1024 token。
 
 ## 恢复与部署范围
 

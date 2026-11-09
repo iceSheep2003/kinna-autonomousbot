@@ -1,7 +1,7 @@
 import type { EnvironmentPlugin } from '../plugin.js';
 import type { IncomingEvent } from '../../runtime/types.js';
 import type { BilibiliConfig } from './types.js';
-import type { BilibiliMessages, BilibiliVideo, FramePerception, FrameReader } from './ports.js';
+import type { BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
 import type { DraftQueue } from './drafts.js';
 import { registerBilibiliTools } from './tools.js';
 
@@ -10,9 +10,11 @@ export interface BilibiliPluginOptions {
   video: BilibiliVideo;
   messages: BilibiliMessages;
   drafts: DraftQueue;
-  perception?: FramePerception;
-  /** 抽帧 → 理解 → 清理临时文件；由应用层注入。 */
-  reader?: FrameReader;
+  /** 按热度选点 + 无头浏览器截图；由应用层注入。 */
+  shots?: VideoShots;
+  heat?: HeatSampler;
+  /** 截图对外可访问的地址前缀（DeepSeek 要能下载）。 */
+  publicBaseUrl?: string;
   /** 轮询自己视频的评论，把别人对你说的话送进场景会话。 */
   pollMs?: number;
   /** 读自己空间最近的投稿；不提供时不做评论轮询（仍可用读/写草稿能力）。 */
@@ -67,7 +69,8 @@ export function createBilibiliPlugin(deps: BilibiliPluginOptions): EnvironmentPl
     setup(registry) {
       registerBilibiliTools(registry, {
         config, video: deps.video, messages: deps.messages, drafts: deps.drafts,
-        ...(deps.perception ? { perception: deps.perception } : {}), ...(deps.reader ? { reader: deps.reader } : {}),
+        ...(deps.shots ? { shots: deps.shots } : {}), ...(deps.heat ? { heat: deps.heat } : {}),
+        ...(deps.publicBaseUrl ? { publicBaseUrl: deps.publicBaseUrl } : {}),
       });
     },
     async start(context) {
