@@ -10,6 +10,12 @@ import { canApprove, checkContent, exploreRange, explainCode, groundedPoints, is
 import { describeFrames, framesWith } from '../src/infrastructure/bilibili/media.js';
 import type { BilibiliTransport } from '../src/integrations/bilibili/ports.js';
 import { translateVideo } from '../src/app/video-watch.js';
+import { createServer } from '../src/infrastructure/http/server.js';
+import { readFileSync } from 'node:fs';
+import { CapabilityRegistry } from '../src/capabilities/registry.js';
+import { ConfigSchema } from '../src/app/config.js';
+import { registerBilibiliTools } from '../src/integrations/bilibili/tools.js';
+import type { AdminApi } from '../src/app/admin.js';
 
 const NOW = 1_800_000_000_000;
 const DAY = 86_400_000;
@@ -195,4 +201,81 @@ test('translateVideo 只喂「检索到的几条评论」和「画面理解」�
   assert.equal(calls.length, 1);
   assert.equal(result.keyPoints.length, 1);
   assert.doesNotMatch(calls[0]!.instructions, /cookie/i);
+});
+
+/* -------------------------- owner 批准接口（HTTP） -------------------------- */
+
+const TOKEN = 'test-secret-at-least-24-chars';
+
+function approvalServer(f: ReturnType<typeof queue>) {
+  const base: AdminApi = {
+    self: () => ({}), list: () => [], experiences: () => [], turns: () => [], jobs: () => [], capabilities: () => [],
+    ingest: () => ({ duplicate: false }),
+    approvals: () => ({
+      list: () => { f.queue.expire(); return f.queue.pending(); },
+      approve: async id => { const r = await f.queue.approve(id, { by: 'owner' }); return { ok: r.ok, ...(r.reason ? { reason: r.reason } : {}), ...(r.draft?.postedId ? { postedId: r.draft.postedId } : {}) }; },
+      reject: (id, note) => { const r = f.queue.reject(id, { by: 'owner', ...(note ? { note } : {}) }); return { ok: r.ok, ...(r.reason ? { reason: r.reason } : {}) }; },
+    }),
+  };
+  return createServer(base, TOKEN);
+}
+
+test('批准接口只有 owner 能调，且全程不返回 cookie 之类的敏感值', async () => {
+  const f = queue();
+  const app = approvalServer(f);
+  const headers = { authorization: `Bearer ${TOKEN}` };
+  try {
+    const draft = (f.queue.submit({ kind: 'comment', content: '这一段讲得很清楚', reason: '看完有用', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as { draft: Draft }).draft;
+    assert.equal((await app.inject({ url: '/v1/bilibili/drafts' })).statusCode, 401);
+    const listed = await app.inject({ url: '/v1/bilibili/drafts', headers });
+    assert.equal(listed.statusCode, 200);
+    assert.deepEqual(listed.json().drafts.map((d: Draft) => d.id), [draft.id]);
+    assert.doesNotMatch(listed.body, /SESSDATA|bili_jct|cookie/i);
+    const approved = await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/approve`, headers });
+    assert.equal(approved.statusCode, 200);
+    assert.equal(approved.json().ok, true);
+    assert.equal(f.messages.posted.length, 1);
+    // 重复批准返回 409 而不是再发一遍。
+    assert.equal((await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/approve`, headers })).statusCode, 409);
+  } finally { await app.close(); }
+});
+
+test('没配置 B 站时批准路由返回 404，而不是假装成功', async () => {
+  const app = createServer({ self: () => ({}), list: () => [], experiences: () => [], turns: () => [], jobs: () => [], capabilities: () => [], ingest: () => ({ duplicate: false }) }, TOKEN);
+  try {
+    assert.equal((await app.inject({ url: '/v1/bilibili/drafts', headers: { authorization: `Bearer ${TOKEN}` } })).statusCode, 404);
+  } finally { await app.close(); }
+});
+
+test('owner 可以在批之前拒绝草稿，拒绝后不能再被批准', async () => {
+  const f = queue();
+  const app = approvalServer(f);
+  const headers = { authorization: `Bearer ${TOKEN}` };
+  try {
+    const draft = (f.queue.submit({ kind: 'dynamic', content: '想发一条不痛不痒的动态', reason: 'r' }) as { draft: Draft }).draft;
+    const rejected = await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/reject`, headers, payload: { note: '没意思' } });
+    assert.equal(rejected.statusCode, 200);
+    assert.equal(f.queue.get(draft.id)?.status, 'rejected');
+    assert.equal((await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/approve`, headers })).statusCode, 409);
+    assert.equal(f.messages.posted.length, 0);
+  } finally { await app.close(); }
+});
+
+test('配置示例真实可用：schema 能过，列出的 B 站工具都注册得出来', () => {
+  const raw = JSON.parse(readFileSync(new URL('../agent.bilibili.example.json', import.meta.url), 'utf8'));
+  const config = ConfigSchema.parse(raw);
+  assert.equal(config.bilibili?.enabled, true);
+  const operations = { get: () => undefined, save() {} };
+  const registry = new CapabilityRegistry(operations);
+  const f = queue();
+  registerBilibiliTools(registry, {
+    config: config.bilibili!, drafts: f.queue, reader: { describe: async () => ({ text: '', frames: 0 }) },
+    video: { meta: async () => { throw new Error('unused'); }, frames: async () => ({ frames: [], durationSeconds: 0 }) },
+    messages: f.messages,
+  });
+  const names = config.boundaries.allowedTools.filter(name => name.startsWith('bilibili.'));
+  assert.ok(names.length >= 4);
+  assert.doesNotThrow(() => registry.validate(names, names));
+  // 注册目录里的每一项都要能被模型看到 schema，不能只是有名字。
+  assert.equal(registry.catalog(names).length, names.length);
 });

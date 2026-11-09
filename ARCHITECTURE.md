@@ -195,6 +195,8 @@ G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状�
 
 新增平台只需实现 `EnvironmentPlugin`：注册能力，接收平台事件并转换为 `IncomingEvent`。插件不拿 Repositories、数据库或主体写服务。QQ/B站/后续平台没有各自的常驻自主 Agent；跨平台行动由同一个主体形成意图，再由局部执行组合工具。
 
+B 站的边界值得单独说：读（抽帧看视频、读评论）是能力，写（评论、动态）是**公开动作**。所以写没有直接工具，只有 `bilibili.draft_*` 出草稿；批准走 owner 的 HTTP 接口，模型拿不到这个端口，`test/bilibili.test.ts` 里有一条专门验证「列出的响应里没有 cookie」。登录态与 csrf 只在 `infrastructure/bilibili/client.ts` 出现，集成层连 cookie 的概念都没有。
+
 `integrations/builtin.ts` 展示记忆查询、原始证据读取、模拟环境与 Brave 搜索接入。`examples/local-environment.ts` 展示完整环境插件。生产插件还需实现认证、发送对象范围、平台限流、资源读取和业务回执语义。
 
 ## 代码门槛与结构约定

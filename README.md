@@ -114,6 +114,9 @@ QQ/NapCat 平台能力已迁入，配置和线上核对清单见 [QQ-MIGRATION.m
 | `GET /v1/experiences?after=0&limit=30` | 原始经验，可附加 source |
 | `GET /v1/sessions/self/turns` | 最近 self 回合与当时上下文 |
 | `POST /v1/events` | 投递环境事件 |
+| `GET /v1/bilibili/drafts` | 待批准的 B 站评论/动态草稿（未配置 B 站时 404） |
+| `POST /v1/bilibili/drafts/:id/approve` | 批准并发出；成功 200，不可批准（已用/过期/重复）409 |
+| `POST /v1/bilibili/drafts/:id/reject` | 拒绝草稿，可带 `{"note":"..."}` |
 
 集合接口支持 `limit` 和 `offset`，每页上限 100。事件示例：
 
@@ -130,6 +133,18 @@ QQ/NapCat 平台能力已迁入，配置和线上核对清单见 [QQ-MIGRATION.m
 重复的 `(source, id)` 不再次触发。场景消息使用 session 路由，并携带稳定 sessionId、environment 和 scope。只有主体反思事件使用 self 路由。局部执行事件使用 `{"type":"execution","executionId":"..."}`；仅留档的经验使用 `{"type":"experience"}`。
 
 这些接口不提供绕过 self 直接重写身份和目标的入口。API 只拿读模型与事件投递口，不拿领域写仓库。
+
+## B 站接入
+
+B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**说得出口**。前两件是读，最后一件是公开写，所以两者的门槛不一样。
+
+- `bilibili.video`：按时间轴抽帧（避开片头片尾），交给视觉模型描述画面，再结合标题/简介写成观看笔记。画面里没出现过的细节会被丢掉——读视频最容易犯的错就是看图说话。帧是临时文件，理解完即删。
+- `bilibili.comments`：读一个视频的评论区（按热度或时间），包括别人对你视频的评论。配置 `BILIBILI_MID` 后还会轮询自己视频下的新评论，送进对应视频的场景会话。
+- `bilibili.draft_comment` / `bilibili.draft_dynamic`：**只出草稿**。模型没有任何路径能自己把内容发到公开平台上；草稿存在本地库，带过期时间（默认 24h）。
+- 批准：只有持 `API_TOKEN` 的人能调 `POST /v1/bilibili/drafts/:id/approve`。真正发出还要过当天额度（`maxPostsPerDay`），失败不扣额度、不自动重发。
+- `commentPolicy` / `dynamicPolicy`：`off` 连草稿都不建，`draft`（默认）出草稿等人批，`on` 同样要显式批准请求。
+
+登录态只从环境读（`BILIBILI_SESSDATA` + `BILIBILI_BILI_JCT`），不落配置文件、不进模型上下文；写请求的 `csrf` 由传输层自动补上，调用方看不到 cookie。配置示例见 `agent.bilibili.example.json`。抽帧依赖本机 `ffmpeg`，画面理解需要一个 OpenAI 兼容的视觉模型（`BILIBILI_VISION_*`）。
 
 ## 恢复与部署范围
 
