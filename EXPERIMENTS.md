@@ -224,8 +224,90 @@ MAX_CALLS=6 GATE_MIN_EPISODES=200 GATE_SALIENCE=999 npx tsx scripts/evaluate.ts
 
 ---
 
-## 5. 待办 / 下一轮想验证的
+## 5. 实验 3：单一主体 + personal 倾向 + 按场合微调模型参数（静态验证，未跑真实模型）
 
+### 触发
+
+用户两点纠正：
+
+1. 「有些地方需要有 personal 的倾向」「有些地方的模型其实不必要开思考，参数上有讲究，需要微调」；
+2. 「只有一个角色啊其实，就是这个 agent 本体」——`self` / `scene` / `execution` / `dream`
+   不是四个角色，是同一个人在不同场合，身份、记性、脾气必须连续。
+
+第 2 点推翻了我一度采用的设计：给四种 session 各写一套「你是……」的提示词、
+按「角色」分配四套采样参数。那样模型会表现成四个人。
+
+### 改了什么（三类变量，同时改）
+
+| 层 | 改动 | 文件 |
+|---|---|---|
+| 身份（唯一） | 新建 `shared/persona.ts`，集中定义 `Personality`（性子 / 在意什么 / 红线 / 默认基调）与共享分寸 `SOCIAL_LINES`；四处提示词开头统一「还是你，同一个人」，只补「这会儿在做什么」 | `shared/persona.ts`（新）、`self/session.ts`、`execution/scene.ts`、`execution/runner.ts`、`memory/dream.ts` |
+| personal 倾向（按场合强弱） | self / scene 注入同一份 `personaText`；dream 只保留「对谁的印象变了」并加防漂移；execution 明确「办事不发挥偏好」。`AGENT_CONFIG.personal=false` 可关掉偏好段落（供 A/B 对照），身份与底线不变 | `app/config.ts`、`app/agent.ts` |
+| 模型参数（按场合，不是按人格） | `ModelSampling` 作为 port 层意图；`defaultProfiles` 四档；`OpenAICompatibleModel` 只发当前模式真正生效的字段 | `shared/model.ts`、`infrastructure/models/profiles.ts`、`infrastructure/models/openai-compatible.ts`、`main.ts`、`scripts/evaluate.ts` |
+
+参数表（DeepSeek 官方《思考模式》约束：思考模式下 `temperature` / `presence_penalty` 静默失效，
+非思考模式下 `top_p` 恒为 1.0，所以这两类字段在不同档位互斥发送）：
+
+| 场合 | thinking | effort | temperature | presence_penalty | top_p | max_tokens | timeout |
+|---|---|---|---|---|---|---|---|
+| self 自己想事情 | on | low | — | — | 0.95 | 8 000 | 90 s |
+| dream 夜里回想 | on | high | — | — | 0.95 | 16 000 | 180 s |
+| execution 办事 | off | — | 0.3 | 0.2 | — | 2 000 | 30 s |
+| scene 群里接话 | off | — | 0.85 | 0.4 | — | 1 500 | 25 s |
+
+理由：日常接话不该「先写 1800 token 思维链再回一句哈哈」（思维链计入 `max_tokens`，
+既贵又会把聊天腔调带成书面报告）；整合几十条经验要交叉印证、裁决矛盾，才值得满格推理。
+`LLM_THINKING=off|on` 可整体切换（换非推理模型 / 省思维链 token），更细的覆盖走
+`new OpenAICompatibleModel({ profiles })` 或单请求 `sampling`。
+`memory/dream.ts` 里原先硬编码的 `timeoutMs: 180_000` 已删除，否则会盖掉配置里的档位。
+
+### 为人处事 skill 怎么落进提示词
+
+借的是「分寸」，不是情感咨询流程，写成第一人称的待人方式：先接住人再谈事；
+开口前量五维（回应温度 / 信号确定性 / 情绪走向 / 冲动度 / 事件性质）；
+潜台词只给「可能」不给「一定」；深夜、连发、质问、自我贬低先缓一缓；
+回复三基调挑一版、不用群发套话；不替谁做决定、不操控、不把拒绝读成欲擒故纵；
+出现自伤 / 危险信号先给求助渠道。Dream 侧补了对应的防漂移：一次没回不算关系变冷，
+印象变化要说清是哪两件事。
+
+### 验证方式（按用户要求省 token，**没有调用收费模型**）
+
+- `npx tsc -p tsconfig.json --noEmit`：干净。
+- `npm test`：**76/76** 通过（原 58 + 新增 18：`test/profiles.test.ts` 11 例、`test/persona.test.ts` 7 例）。
+  覆盖档位互斥、body 字段、覆盖优先级、环境变量、截断报错、单一人格一致性、personal 开关。
+- `npm run quality`：PASS（82 文件 615 函数 0 违规）。第一次跑报
+  `openai-compatible.ts:35 cyclomatic 11 exceeds 10`，原因是
+  `sampling?.timeoutMs ?? timeoutMs ?? profile.timeoutMs` 把分支塞进了 `decide`；
+  抽出 `timeoutOf()` 后通过。
+- `node scripts/junit.mjs`：JUnit 76 用例、0 失败、0 跳过。
+- 2026-11-10 对齐 Claude 的 dream 过程：一次整合改为同一批经验回放 R1..Rn（R2 起带上一遍的 workspace，只做 revisions/retractions），收敛即停、最多 3 遍；提交按最终差异生成 write/retract/merge，`DreamVersion` 记录 `rounds / converged`。`tsc --noEmit` 干净；**84/84** 验收用例通过；`cqg check` PASS（94 文件 769 函数 0 违规）。**未调用真实收费模型**，所以「多轮回放是否真的提高保留率」尚无实测数据，保留率仍靠 `scripts/evaluate.ts` 离线跑。
+- `npm run audit`：**未能在本地完整跑完**，不是代码问题。沙箱的 safe-delete 拦截了 cqg
+  收尾删除 `.code-quality-gate/run.lock`，报 `broker denied delete`；README / ARCHITECTURE
+  已记录该降级路径，三项检查分别复核如上。
+
+### 结果 / 不能归因
+
+这一轮**只有静态结论**：参数确实按场合发出去了、四种场合确实共用同一份人格、
+personal 开关确实只关偏好不关身份。**没有任何行为层面的结论**——提示词变长后
+模型是否更自然、关思考会不会让接话变笨、`temperature=0.85` 是否合适，全都没测。
+本轮同时改了身份组织方式、personal 配置、采样参数三类变量，即使之后跑真实模型对比，
+也**不能**把差异归因到其中任何一项。
+
+### 下一轮最便宜的三个单变量对照
+
+1. `LLM_THINKING=off` vs 默认：只动思考开关，比较 scene 回复质量与 token 消耗。
+2. `AGENT_CONFIG='{"personal":false}'` vs 默认：只动偏好段落，验证 personal 倾向的贡献。
+3. `profiles: { scene: { temperature: 0.3 } }` vs 0.85：只动一个采样值。
+
+仍沿用实验 2 的纪律：固定 `FORCE_WAKE_EVERY`，否则 `nextWakeAt` 自定会造成样本量漂移，
+空转率不可比。
+
+---
+
+## 6. 待办 / 下一轮想验证的
+
+- **【待做，实验 3】三个单变量对照**：见上一节末尾。提示词长度本身也是一个变量
+  （本轮 self / scene 每轮输入都变长了），若要比较成本，得单独记 `prompt_tokens`。
 - **【已完成，实验 2】信号配比：把运行时流水与外部事件分开。** 最终没有按原计划
   改存储（拆 `runtime-log`），而是在消费端加 `memory/lived.ts` 白名单：流水照写、
   照推进游标，只是不进模型上下文。改动面更小，`evidence` 序号也保持连续。

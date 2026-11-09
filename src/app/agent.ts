@@ -1,4 +1,5 @@
 import type { LanguageModel } from '../shared/model.js';
+import { defaultPersonality, type Personality } from '../shared/persona.js';
 import { defaultContextLimits, type Boundaries, type ContextLimits } from '../shared/limits.js';
 import type { Repositories } from './repositories.js';
 import type { CapabilityRegistry } from '../capabilities/registry.js';
@@ -25,6 +26,10 @@ import type { SchedulePolicy } from '../runtime/ports.js';
 import type { DreamLock, ExperienceLog } from '../memory/ports.js';
 export interface AgentOptions {
   identity: string; tendencies: string[]; boundaries: Boundaries;
+  /** 关掉 personal 倾向（A/B 对照用）；身份唯一、相处底线不变。 */
+  personal?: boolean;
+  /** 唯一一份人格定义；不传用默认。 */
+  personality?: Personality;
   reflectionIntervalMs: number; dreamIntervalMs: number;
   dreamCheckIntervalMs?: number; dreamGate?: Partial<DreamGateConfig>;
   /** 跨进程互斥由调用方注入；不传则只在进程内互斥。 */
@@ -76,6 +81,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const r = repositories;
   const limits = { ...defaultContextLimits, ...options.contextLimits };
   const { boundaries } = options;
+  // 一个人格，多个场合：self 和 scene 拿同一份；execution / dream 不发挥偏好。
+  const personality = options.personal === false ? undefined : options.personality ?? defaultPersonality;
   const experience = new ExperienceService(r.experience);
   const memory = new MemoryService(r.memory);
   const reflections = new ReflectionService(r.reflection, experience);
@@ -113,14 +120,14 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   });
   const model = new BudgetedModel(provider, r.budget, boundaries.maxModelCallsPerHour, worker.clock);
   scenes = new SceneSessions({
-    repository: r.scenes, experience, subject, model, capabilities, boundaries, limits,
+    repository: r.scenes, experience, subject, model, capabilities, boundaries, limits, personality,
     requests: {
       continue: (id, now) => { r.jobs.enqueue('scene', `scene:${id}`, { sessionId: id }, now); },
       reflect: (request, now) => inbox.notify('scene.reflection_requested', request, now),
     },
   });
   const self = new SelfSession({
-    model, repository: r.selfSession, inbox,
+    model, repository: r.selfSession, inbox, personality,
     context: new SelfContextBuilder({ subject, memory, executions, schedules: scheduler, inbox, session: r.selfSession, capabilities, boundaries, limits }),
     committer: new DecisionCommitter({ subject, executions, scheduler, reflections, jobs: r.jobs, capacity: boundaries.maxPendingJobs }),
   });

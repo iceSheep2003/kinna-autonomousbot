@@ -82,9 +82,24 @@ Worker 对每个作业分两个阶段：
 
 `ReflectionService.record` 保存带来源的 summary、conclusions 和 proposedChanges。self 每轮反思使用此接口；它本身不修改主体目标。
 
-`DreamService` 读取永久经验日志的一个不可变前缀和已有记忆，生成候选。校验来源、输入记忆版本和游标后，一起发布记忆版本、保留旧版本、推进游标、通知 self。处理中到达的新事件保留给下一批；失败不推进游标。
+`DreamService` 读取永久经验日志的一个不可变前缀和已有记忆，在**同一个整合会话里回放 R1..Rn 遍**（见下文「Dream 回放」），最后校验来源、输入记忆版本和游标，一次发布记忆版本、保留旧版本、推进游标、通知 self。处理中到达的新事件保留给下一批；失败不推进游标。
 
 Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用 `SubjectService` 或执行服务；建议由后续 self 回合评估。
+
+### Dream 回放：R1..Rn 的修订迭代
+
+Claude Code 的 Auto Dream 是一个**带工具的子代理**：它先概览、再检索会话记录、再整合、再清理索引，中间会反复读。一次性「读完 → 一次性输出」少了这个过程——模型从没回头看过自己刚写了什么，于是同一批素材里会写出三条互相重复、互相矛盾的记忆。`DreamService` 用**同一批经验回放多遍**补上这一段：
+
+| 遍 | 上下文 | 允许的产出 |
+|---|---|---|
+| R1 先写 | 本批 lived 经验 + 已有记忆 `workspace` | `memories`（新写）、`revisions`（改旧说法）、`retractions`（撤回旧记忆）、`failedApproaches`、`proposals` |
+| R2..Rn 修订 | 同一批经验 + **上一次写下的 workspace** + `replay{round, episode, workspace}` | 只做增量：`revisions`（改内容/补证据/`mergeInto` 合并）、`retractions`、少量新 `memories` |
+
+- **收敛**：某遍所有字段都留空 = 模型认为没有别的要改，立刻停止，不再付费回放；`DreamVersion.rounds / converged` 记录回放了几遍、是否收敛。
+- **只改不重写**：R2 起不允许用同一个 id 换个内容重写（`Replay pass tried to rewrite an existing memory; use revisions`），已有记忆只能通过 `revisions` 修改。快照外（不在 `prior` 里）的记忆一个字段都不能改。
+- **证据只会变多**：补证据做并集，回放给出更窄的证据不能抹掉已有证据；改完仍要过证据门槛（推论/策略 ≥2 条）。合并只搬证据，内容以被并入的那条为准；同一遍里修订与撤回同时出现时以撤回为准。
+- **提交**：按最终工作副本与库的差异生成 `write / retract / merge`，在 worker 的事务里一次落库；撤回与合并不删历史，把状态改成 `superseded`，读取侧按状态过滤。
+- **成本**：默认 `maxRounds = 3`（`DREAM_POLICY`，可注入覆盖）。R1 用 high 思考，R2 起降思考档并压低温度；`dreamBatch` 决定一批看多少经验，回放遍数决定这一批花几次模型调用。
 
 ### 两级写入路径
 
@@ -150,6 +165,12 @@ G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状�
 
 主体默认值也收敛到社交场景：`identity` 是「群里一个记性不错、会替人留心的常驻伙伴」，`tendencies` 是「记住谁说过什么」「有来有往」「答应过别人的事要兑现」，第一次唤醒的触发文本从 `You can explore; no assigned task.` 换成了具体的群场景。评估脚本的场景同样改成带 `userId` / `name` 的多轮对话，含情绪变化、前后呼应和一个被搁置的约定——匿名素材下，模型就算想记人也没有对象。
 
+### 只有一个主体，参数按场合而非按人格分
+
+社交化之后又发现一个概念错误：把 `self` / `scene` / `execution` / `dream` 当成四个「角色」、各写一套「你是……」，模型就会表现成四个人。现在四种场合的指令开头统一是「还是你，同一个人」，只补「这会儿在做什么」，身份、记性、脾气不随 session 切换。唯一人格定义在 `shared/persona.ts`；`SOCIAL_LINES` 是从「为人处事」借来的待人口径（先接住人、五维量温、潜台词只给可能、冲动拦截、三基调、反操控、危机转介），self / scene 完整注入，dream 只取防漂移部分，execution 不带。
+
+要区分三层：**身份唯一**；**personal 倾向按场合有强弱**（self / scene 强、dream 轻、execution 零，`AGENT_CONFIG.personal=false` 只关偏好不关身份）；**采样参数按场合分档**（认知负荷，与人格无关）。`shared/model.ts` 的 `ModelSampling` 是 port 层意图，`infrastructure/models/profiles.ts` 给四档默认值，`OpenAICompatibleModel` 只发送当前模式真正生效的字段——思考模式下温度类参数被静默忽略、非思考模式下 `top_p` 恒为 1.0，把无效参数发过去只会让配置看起来在起作用。`max_tokens` 与超时也按场合分：dream 16k / 180s，scene 1.5k / 25s；原先 `memory/dream.ts` 里硬编码的 `timeoutMs: 180_000` 已删除，否则会盖掉档位配置。
+
 ## 场景扩展
 
 新增平台只需实现 `EnvironmentPlugin`：注册能力，接收平台事件并转换为 `IncomingEvent`。插件不拿 Repositories、数据库或主体写服务。QQ/B站/后续平台没有各自的常驻自主 Agent；跨平台行动由同一个主体形成意图，再由局部执行组合工具。
@@ -166,7 +187,7 @@ G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状�
 - 参数超过 4 个的函数接收请求对象（`InvocationRequest`、`SendInput`、`StepFrame`、`ChannelRequest`）。
 - 长函数按“一次只做一件事”拆成有名字的私有方法；分支链改为分发表（QQ 消息片段解析、TTS 供应商请求、媒体类型嗅探）。
 
-`npm run audit` 另外执行 tsc 与 58 个验收用例，并输出 `.quality/code-quality-gate/report.html`。审计用 `.code-quality-gate/run.lock` 保证单实例，收尾时删除该目录；若运行环境禁止 `rmdir`，会报 `Configuration ERROR: broker denied delete`，此时两项检查均已执行通过，应分别用 `npm run quality`、`tsc --noEmit`、`node scripts/junit.mjs` 复核，而不是改代码。
+`npm run audit` 另外执行 tsc 与 76 个验收用例，并输出 `.quality/code-quality-gate/report.html`。审计用 `.code-quality-gate/run.lock` 保证单实例，收尾时删除该目录；若运行环境禁止 `rmdir`，会报 `Configuration ERROR: broker denied delete`，此时两项检查均已执行通过，应分别用 `npm run quality`、`tsc --noEmit`、`node scripts/junit.mjs` 复核，而不是改代码。
 
 ## 自动化验收
 
@@ -184,7 +205,7 @@ G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状�
 
 `test/autonomy.test.ts` 验证三件事：长跑 150 轮后每轮上下文仍不超过 `ContextLimits`（增长只发生在经验日志，不在上下文）；决策越权时目标、执行、日程整体回滚；入口载荷超过 `payloadBudget` 时被拒绝且不落库。
 
-`test/dream.test.ts` 验证门控顺序（G1–G6 各自的拦截原因）、G3 节流确实阻止重复扫描、显著性权重排序（失败 > 纠正 > 新信息）、门控记账不回灌、锁在作业失败后能释放、以及「≥2 条证据」的校验规则。
+`test/dream.test.ts` 验证门控顺序（G1–G6 各自的拦截原因）、G3 节流确实阻止重复扫描、显著性权重排序（失败 > 纠正 > 新信息）、门控记账不回灌、锁在作业失败后能释放，以及「≥2 条证据」的校验规则；另覆盖回放：第 2 遍才拿到 `replay` 与上一遍的 workspace、收敛即停、撤回与合并的最终落库形态、回放修订同样受证据门槛约束、不能用新内容重写已有记忆、旧记忆能在回放里被改说法。
 
 `scripts/evaluate.ts` 是接真实模型的长跑评估（压缩时间轴），产出 `.quality/eval/<label>/summary.json`。它需要 `.env` 里的 `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`，默认不给写能力，可用 `ENABLE_NOTE` 切换。它不进 CI，也不计入验收用例数。
 

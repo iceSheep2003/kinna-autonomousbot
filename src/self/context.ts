@@ -1,6 +1,6 @@
 import type { Boundaries, ContextLimits } from '../shared/limits.js';
 import { payloadBudget } from '../shared/limits.js';
-import type { SubjectView } from '../subject/ports.js';
+import type { MoodView, SubjectView } from '../subject/ports.js';
 import type { MemoryView } from '../memory/ports.js';
 import type { ExecutionView } from '../execution/ports.js';
 import type { CapabilityAccess } from '../capabilities/ports.js';

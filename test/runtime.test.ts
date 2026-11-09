@@ -141,8 +141,10 @@ test('Dream 只发布已验证的快照，按事件游标增量整理，不能�
   const f = fixture(new ScriptedModel(req => {
     if (req.role !== 'dream') return rest;
     const c = req.context as any;
-    if (fail) return { summary: '无效引用', memories: [{ id: 'm', content: '内容', kind: 'inference', evidence: [999999] }], proposals: [] };
-    return { summary: '整理完成', memories: [{ id: 'm', content: '主体曾反思', kind: 'observation', evidence: [c.experiences[0].seq] }], proposals: ['考虑新兴趣'] };
+    if (fail) return { memories: [{ id: 'm', content: '内容', kind: 'inference', evidence: [999999] }], proposals: [] };
+    // 回放第 2 遍：没有要改的就留白（本轮收敛），不再重写一遍。
+    if (c.replay) return {};
+    return { memories: [{ id: 'm', content: '主体曾反思', kind: 'observation', evidence: [c.experiences[0].seq] }], proposals: ['考虑新兴趣'] };
   }));
   try {
     await f.runtime.tick(NOW);
@@ -267,7 +269,8 @@ test('Dream 读取快照期间新经验到达，发布只推进到原始截断�
     if (req.role !== 'dream') return rest;
     started(); await blocked;
     const c = req.context as any;
-    return { summary: '快照整理', memories: [{ id: 'snapshot', content: '来自快照的观察', kind: 'observation', evidence: [c.experiences[0].seq] }], proposals: [] };
+    if (c.replay) return {};
+    return { memories: [{ id: 'snapshot', content: '来自快照的观察', kind: 'observation', evidence: [c.experiences[0].seq] }], proposals: [] };
   }));
   try {
     await f.runtime.tick(NOW);

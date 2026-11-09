@@ -141,11 +141,21 @@ Worker 串行推进作业，所有模型/网络调用在事务外进行。本地
 
 SQLite 租约用于防止意外双实例。本实现按单进程部署，不是分布式队列/多副本调度器。生产公开服务还需要部署层的 TLS、入口限制与平台连接配置。
 
+## 一个主体，不是四个角色
+
+`self` / `scene` / `execution` / `dream` 是同一个人在四种场合：自己想事情、在群里接话、办一件具体事、夜里回想。身份、记性、脾气在这四种场合连续，提示词开头统一是「还是你，同一个人」，只补「这会儿在做什么」，不再各自定义「你是谁」。唯一一份人格定义在 `shared/persona.ts`（`Personality`：性子、在意什么、红线、默认基调）；`AGENT_CONFIG.personal=false` 只关掉偏好段落用于对照，身份和相处底线不变。
+
+借「为人处事」的分寸写成待人口径，而不是情感咨询流程：先接住人再谈事、开口前量五维（回应温度 / 信号确定性 / 情绪走向 / 冲动度 / 事件性质）、潜台词只给「可能」不给「一定」、深夜或连发质问先缓一缓、回复三基调挑一版且不用群发套话、不替谁做决定、不操控、危机信号先给求助渠道。personal 倾向按场合有强弱：self / scene 充分发挥，dream 只保留「对谁的印象变了」并防漂移，execution 明确不把偏好带进工具参数。
+
+模型参数同样按**场合**分档，但那是认知预算，不是人格配置，见 `infrastructure/models/profiles.ts`：self / dream 开思考（low / high），execution / scene 关思考（低温度求稳、稍高温度求自然）。DeepSeek 思考模式下 `temperature` / `presence_penalty` 静默失效、非思考模式下 `top_p` 恒为 1.0，适配器只发当前模式真正生效的字段。`LLM_THINKING=off|on` 可整体切换，更细的覆盖用构造参数 `profiles` 或单请求 `sampling`。
+
 ## 记忆与自主唤醒
 
 这个主体是「群里一个记性不错、会替人留心的常驻伙伴」。提示词和工具说明都用第一人称、以关系为对象：self 醒来想的是谁最近不太好、答应过谁什么、上次哪句话没接好；Dream 夜里回想的是谁和谁有了变化、对某个人的印象被哪两件事改变的。`self.note` 带「关于谁」，`group.say` 让它真的能在群里开口。机器约束（证据下限、稳定 ID、授权边界）一条没少，只是标明「这是记账要求，不是你思考的方式」。
 
 写记忆分两级：任务/场景 session 只做 **L1 append-only 记录**（`self.note` 写结构化经验，不需要模型、不会失败），`DreamService` 周期性做 **L2 提炼**（合并、矛盾裁决、裁剪）。任务不等 self，self 也不必时刻醒着。
+
+**L2 是回放的，不是一次性的。** 同一个整合会话里先把这批经验写一遍（R1），之后每遍都带着同一批经验和「上一遍自己写下的记忆」再看一遍（R2..Rn）：改说法、补证据、把重复的并成一条、把不成立的撤回，直到某遍模型明确说没别的要改（收敛）或到达 `maxRounds`。已有记忆只能通过 `revisions` 修改，不能换个内容重写；证据只会并集，不会因为回放而变少；所有改动按最终差异一次原子提交，`rounds / converged` 记在发布版本上。
 
 `memory/lived.ts` 定义「什么算经历过的事」：门控记账、作业报错、调度心跳这类机器流水一律不进模型上下文，只有外部世界、自己写下的纸条、反思与感受、别人说过的话才算。早期版本没做这层分离，结果 agent 把研究自己的运行时当成了生活——一个人都没记住。
 
@@ -159,19 +169,19 @@ Dream 不再「到点就整合」，而是每周期过一道 **G1–G6 门控级
 
 ```sh
 npm run quality   # 静态门槛：圈/认知复杂度、嵌套、参数个数、语句数、依赖环
-npm run audit     # 完整审计：tsc + 58 个验收用例（JUnit）+ 静态门槛
-npm test          # 直接跑全部 58 个用例
+npm run audit     # 完整审计：tsc + 76 个验收用例（JUnit）+ 静态门槛
+npm test          # 直接跑全部 76 个用例
 ```
 
 `quality.config.json` 固定扫描范围（`src`）与阈值。写法上因此有两条硬约定：协作者超过 4 个的类传依赖对象，参数超过 4 个的函数传请求对象。参数个数就是“这个函数需要知道多少东西”的度量。
 
-`cqg audit` 用 `.code-quality-gate/run.lock` 做单实例互斥，结束时删除该目录。若运行环境禁止 `rmdir`（例如受限沙箱），审计会在收尾阶段报 `Configuration ERROR: broker denied delete` —— 此时两项检查其实都已执行并通过，可用 `npm run quality`、`tsc --noEmit` 和 `node scripts/junit.mjs` 分别验证，或在 CI 中运行 `npm run audit`。不要因为这条错误去改代码。
+`cqg audit` 用 `.code-quality-gate/run.lock` 做单实例互斥，结束时删除该目录。若运行环境禁止 `rmdir`（例如受限沙箱），审计会在收尾阶段报 `Configuration ERROR: broker denied delete` —— 此时两项检查其实都已执行并通过，可用 `npm run quality`、`tsc --noEmit` 和 `node scripts/junit.mjs` 分别验证，或在 CI 中运行 `npm run audit`。不要因为这条错误去改代码。若上一轮被中断留下 `.code-quality-gate/run.lock` 空目录，确认无活跃进程后 `rmdir` 即可；受限沙箱连这一步也可能拒绝，同样按上面的降级路径分别复核。
 
 ## 验证与限制
 
 `npm run check` 运行 TypeScript 编译、架构依赖检查、独立主体单元测试和行为/进程测试。详见 [ARCHITECTURE.md](./ARCHITECTURE.md) 中的验收对应。
 
-**自动化验收**（`npm test`，58 个用例）使用脚本模型与本地 HTTP stub，**不调用收费模型、不进网络、不依赖真实平台账号**，因此 CI 可复现。它证明机制与依赖边界，包括长跑上下文有界、失败决策整体回滚、载荷预算、Dream 门控顺序与锁释放，以及「系统流水不进记忆上下文」。
+**自动化验收**（`npm test`，84 个用例）使用脚本模型与本地 HTTP stub，**不调用收费模型、不进网络、不依赖真实平台账号**，因此 CI 可复现。它证明机制与依赖边界，包括长跑上下文有界、失败决策整体回滚、载荷预算、Dream 门控顺序与锁释放，以及「系统流水不进记忆上下文」。
 
 **真实模型评估**是独立的 `scripts/evaluate.ts`，需要 `.env` 里的 `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`，不计入验收用例、也不进 CI。它曾暴露 `max_tokens` 对推理模型过小导致 JSON 被截断的问题。方法与四个对照样本的结果（包括一个**未支持假设**的结论）全部记在 [EXPERIMENTS.md](./EXPERIMENTS.md)。即便如此，长期自主行为质量仍未被充分验证。
 

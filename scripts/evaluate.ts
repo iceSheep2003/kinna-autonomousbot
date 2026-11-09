@@ -10,6 +10,8 @@
  *   ENABLE_NOTE=0   关掉写纸条能力（同时关掉发言）
  *   ENABLE_SAY=0    只关掉发言，保留纸条
  *   SCENARIO=anonymous   去掉人名，只留「群里有人说：…」
+ *   LLM_THINKING=off|on  全场合关/开思考（换非推理模型或省思维链 token）
+ *   AGENT_CONFIG='{"personal":false}'   只关 personal 倾向，身份与相处底线不变
  *
  * 用法：
  *   npx tsx scripts/evaluate.ts                       # 默认 7 天，写通道开启
@@ -28,6 +30,7 @@ import { registerConversation, registerMemory, registerNotes } from '../src/inte
 import { describeMemories, retention } from '../src/memory/probe.js';
 import type { DreamVersion, Memory } from '../src/memory/types.js';
 import { OpenAICompatibleModel } from '../src/infrastructure/models/openai-compatible.js';
+import { profilesFromEnv } from '../src/infrastructure/models/profiles.js';
 import { createDreamLock } from '../src/infrastructure/locks/dream-lock.js';
 
 const HOUR = 3_600_000;
@@ -129,18 +132,20 @@ function scenario(): SocialEvent[] {
 function auditDreams(store: Store) {
   // 一批全是系统流水时会写一条空整合来推进游标；它不是「丢了事实」，别算进保留率。
   const versions = store.list<DreamVersion>('dreams', 500)
-    .filter(version => version.candidate.memories.length > 0).sort((a, b) => a.at - b.at);
+    .filter(version => (version.candidate.memories?.length ?? 0) > 0).sort((a, b) => a.at - b.at);
   return versions.map(version => {
     const batch = store.experiences(version.cursor, Math.max(1, version.cutoff - version.cursor));
     const batchText = batch.map(entry => JSON.stringify(entry.data));
-    const produced = version.candidate.memories.map(memory => memory.content);
+    const produced = (version.candidate.memories ?? []).map(memory => memory.content);
     return {
       at: new Date(version.at).toISOString(),
       batchEpisodes: batch.length,
       memories: produced.length,
       chars: produced.reduce((total, text) => total + text.length, 0),
-      failedApproaches: version.candidate.failedApproaches.length,
-      proposals: version.candidate.proposals.length,
+      rounds: version.rounds ?? 1,
+      converged: version.converged ?? false,
+      failedApproaches: version.candidate.failedApproaches?.length ?? 0,
+      proposals: version.candidate.proposals?.length ?? 0,
       retention: retention(batchText, produced),
     };
   });
@@ -224,7 +229,7 @@ async function main(): Promise<void> {
   if (!baseUrl || !apiKey || !modelName) throw new Error('LLM_BASE_URL / LLM_API_KEY / LLM_MODEL 必须齐全');
   mkdirSync(dirname(DB_PATH), { recursive: true });
   if (process.env.KEEP_DB !== '1') rmSync(DB_PATH, { force: true });
-  const model = new LoggedModel(new OpenAICompatibleModel({ baseUrl, apiKey, model: modelName }));
+  const model = new LoggedModel(new OpenAICompatibleModel({ baseUrl, apiKey, model: modelName, profiles: profilesFromEnv(process.env) }));
   const store = new Store(DB_PATH);
   const repositories = sqliteRepositories(store);
   const capabilities = new CapabilityRegistry(repositories.operations);
