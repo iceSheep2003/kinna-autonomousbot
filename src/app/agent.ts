@@ -9,6 +9,7 @@ import { ExperienceService } from '../memory/experience.js';
 import { MemoryService } from '../memory/service.js';
 import { ReflectionService } from '../memory/reflection.js';
 import { DreamService } from '../memory/dream.js';
+import { DreamGate, defaultDreamGate, HOUR, type DreamGateConfig } from '../memory/dream-gate.js';
 import { ExecutionService } from '../execution/service.js';
 import { ExecutionRunner } from '../execution/runner.js';
 import { SceneSessions } from '../execution/scene.js';
@@ -21,8 +22,54 @@ import { BudgetedModel } from '../runtime/budget.js';
 import { DecisionCommitter } from './decision-committer.js';
 import type { IncomingEvent } from '../runtime/types.js';
 import type { SchedulePolicy } from '../runtime/ports.js';
+import type { DreamLock, ExperienceLog } from '../memory/ports.js';
 export interface AgentOptions {
-  identity: string; tendencies: string[]; boundaries: Boundaries; reflectionIntervalMs: number; dreamIntervalMs: number; contextLimits?: Partial<ContextLimits>;
+  identity: string; tendencies: string[]; boundaries: Boundaries;
+  reflectionIntervalMs: number; dreamIntervalMs: number;
+  dreamCheckIntervalMs?: number; dreamGate?: Partial<DreamGateConfig>;
+  /** 跨进程互斥由调用方注入；不传则只在进程内互斥。 */
+  dreamLock?: DreamLock;
+  contextLimits?: Partial<ContextLimits>;
+}
+
+/** 默认锁只在进程内互斥；跨进程由基础设施层的文件锁提供。 */
+function localLock(): DreamLock {
+  let held = false;
+  return {
+    acquire() { if (held) return false; held = true; return true; },
+    release() { held = false; },
+    held() { return held; },
+  };
+}
+
+interface GateWiring { gate: DreamGate; checkDream: (now: number) => void }
+
+/**
+ * 门控替代了「到点就整合」的盲定时器。周期只负责问一句「现在该不该整合」，
+ * 真正耗时的整合仍由 dream 作业执行；锁在作业结束时释放，崩溃靠超时回收。
+ */
+function wireGate(input: { repositories: Repositories; experience: ExperienceLog; options: AgentOptions }): GateWiring {
+  const { repositories, experience, options } = input;
+  const gate = new DreamGate({
+    state: repositories.dreamState, experience, memory: repositories.memory,
+    lock: options.dreamLock ?? localLock(),
+    config: { ...defaultDreamGate, ...options.dreamGate, minHours: options.dreamGate?.minHours ?? options.dreamIntervalMs / HOUR },
+  });
+  let lastBlocked = '';
+  /** 只在「触发」或「拦截原因变化」时记一条，避免每 10 分钟写一行噪音。 */
+  const checkDream = (now: number): void => {
+    const decision = gate.check(now);
+    if (decision.fire) {
+      experience.record('runtime', 'dream.gate', { snapshot: decision.snapshot }, now);
+      repositories.jobs.enqueue('dream', 'dream', {}, now);
+      lastBlocked = '';
+      return;
+    }
+    if (decision.blockedBy === lastBlocked) return;
+    experience.record('runtime', 'dream.gate.blocked', { blockedBy: decision.blockedBy, snapshot: decision.snapshot }, now);
+    lastBlocked = decision.blockedBy;
+  };
+  return { gate, checkDream };
 }
 /** 装配只做依赖注入；每个模块拿到的都是自己的 port 或依赖对象。 */
 export function composeAgent(repositories: Repositories, provider: LanguageModel, capabilities: CapabilityRegistry, options: AgentOptions) {
@@ -32,6 +79,7 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const experience = new ExperienceService(r.experience);
   const memory = new MemoryService(r.memory);
   const reflections = new ReflectionService(r.reflection, experience);
+  const { gate, checkDream } = wireGate({ repositories: r, experience, options });
   const subject = new SubjectService(r.subject, new GoalService(r.goals, experience), new AffectService(r.subject, experience));
   let scenes: SceneSessions;
   const inbox = new Inbox({
@@ -57,7 +105,7 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     due: now => scheduler.fireDue(now),
     periodic: [
       { key: 'reflection', intervalMs: options.reflectionIntervalMs, fire: now => inbox.notify('reflection.due', { reason: 'Review interests, commitments, affect, and whether to act or rest.' }, now) },
-      { key: 'dream', intervalMs: options.dreamIntervalMs, fire: now => { r.jobs.enqueue('dream', 'dream', {}, now); } },
+      { key: 'dream-check', intervalMs: options.dreamCheckIntervalMs ?? 600_000, fire: checkDream },
     ],
     reportError: (data, now) => { experience.record('runtime', 'job.error', data, now); },
   });
@@ -77,12 +125,25 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const runner = new ExecutionRunner({ repository: r.execution, service: executions, model, capabilities, memory, experience, boundaries, limits });
   const dream = new DreamService({
     repository: r.memory, experience, model, limits,
-    feedback: { completed: (dreamId, summary, proposals, now) => inbox.notify('dream.completed', { dreamId, summary, proposals }, now) },
+    feedback: {
+      completed: (dreamId, summary, proposals, now) => {
+        gate.markConsolidated(now);
+        inbox.notify('dream.completed', { dreamId, summary, proposals }, now);
+      },
+    },
   });
   worker.register('self', { prepare: (job, now) => self.prepare(job.payload, job.error, now) });
   worker.register('scene', { prepare: (job, now) => scenes.prepare(job.id, String(job.payload.sessionId), now), failed: (job, error, now) => scenes.failed(String(job.payload.sessionId), error, now) });
   worker.register('execution', { prepare: (job, now) => runner.prepare(job.id, job.payload.executionId, now), failed: (job, error, now) => runner.failed(String(job.payload.executionId), error, now) });
-  worker.register('dream', { prepare: (job, now) => dream.prepare(job.id, job.error, now), failed: (job, error, now) => inbox.notify('job.failed', { jobId: job.id, error }, now) });
+  worker.register('dream', {
+    // 锁覆盖「读经验 + 调模型」这段真正耗时的部分；提交是瞬时的，不必占用锁。
+    prepare: async (job, now) => {
+      if (!gate.tryLock()) return () => {};
+      try { return await dream.prepare(job.id, job.error, now); }
+      finally { gate.releaseDream(); }
+    },
+    failed: (job, error, now) => inbox.notify('job.failed', { jobId: job.id, error }, now),
+  });
   return {
     runtime: { start: (now?: number) => worker.start(now), tick: (now?: number) => worker.tick(now), stop: () => worker.stop(), ingest: (event: IncomingEvent, now?: number) => inbox.ingest(event, now) },
     // 暴露查询接口给 HTTP/内置工具；不把跨模块仓库交给插件。

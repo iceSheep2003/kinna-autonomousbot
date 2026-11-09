@@ -6,6 +6,7 @@ export interface Reflection { id: string; sourceRefs: number[]; summary: string;
 export const DreamDecisionSchema = z.object({
   summary: text,
   memories: z.array(z.object({ id, content: text, evidence: refs.min(1), kind: z.enum(['observation', 'inference', 'strategy']) })).max(30),
+  failedApproaches: z.array(text).max(20).default([]),
   proposals: z.array(text).max(12),
 });
 export type DreamDecision = z.infer<typeof DreamDecisionSchema>;

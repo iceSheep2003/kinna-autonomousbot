@@ -86,6 +86,48 @@ Worker 对每个作业分两个阶段：
 
 Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用 `SubjectService` 或执行服务；建议由后续 self 回合评估。
 
+### 两级写入路径
+
+写记忆分成两层，**任务 session 不经过 self**：
+
+| 层级 | 谁写 | 内容 | 是否需要模型 |
+|---|---|---|---|
+| L1 原始层 | 任务/场景 session，或 `self.note` 能力 | append-only 的 `note.observation` / `note.result` 等结构化经验 | 否 |
+| L2 提炼层 | `DreamService`，由门控触发 | 合并、矛盾裁决、裁剪，产出带 evidence 的记忆 | 是 |
+
+这样拆的理由是延迟与可用性：如果任务要同步等 self 想完才能记笔记，self 就必须时刻醒着，而「空闲」恰恰是 dreaming 的前提。L1 不会失败（纯追加），L2 失败下次再来即可。
+
+`self.note` 是唯一的写入能力，由 `integrations/builtin.ts` 注册；`allowedTools` 默认包含它。记忆的**唯一写入者仍是 self 侧的角色**——L1 只是给这个角色一个不需思考的手，不是让场景 session 拥有记忆写入权。
+
+### Dream 触发：门控级联，不是定时器
+
+原先 `dreamIntervalMs` 到点就整合。现在周期只负责问一句「现在该不该整合」，由 `DreamGate` 按开销从低到高逐级淘汰：
+
+| 门 | 判断 | 被挡时的含义 |
+|---|---|---|
+| G1 | 是否启用 | 配置关闭 |
+| G2 | `minHours` 是否到了 | 距上次整合太近 |
+| G3 | `scanThrottleMs` 是否到了 | **防止门控短路后重复扫描** |
+| G4 | 新经验条数 / 显著性分数是否够 | 没有值得学的东西 |
+| G5 | 锁是否可获取 | 已有整合在跑 |
+| G6 | 今日次数 / 记忆压力预算 | 配额或索引压力上限 |
+
+G3 专门补一个容易踩的坑：前几道通过、卡在后面时，若状态没前进，下一轮会重复同一轮扫描。所以每次扫描都写 `lastScanAt`，与「上次整合时间 `lastAt`」分开存。
+
+**显著性（`memory/salience.ts`）** 是这套门控与 AutoDream 那类纯数量门控的主要区别。按预测误差密度排序：失败 > 矛盾/纠正 > 检索落空 > 新信息。全是「你好」「谢谢」的五个会话不该触发整合。`scoreSalience` 只认经验 `kind` 与 `source` 的保守归类，认不出的不计分。
+
+**门控自己写的记账不是经验。** `snapshot()` 会过滤 `dream.gate` / `dream.gate.blocked` 等自身记录，否则门控每检查一次就给自己造一条「新经验」，最终自我触发。这属于写入通道的回灌问题，两层写入路径里必须显式切断。
+
+**锁（`DreamLock`）** 在端口层声明接口，实现放 `infrastructure/locks/`。默认注入进程内互斥锁，跨进程由文件锁提供；`app` 不直接依赖基础设施。锁覆盖「读经验 + 调模型」这段真正耗时的部分，**提交是瞬时的，不占锁**；`finally` 里释放，作业失败或超时也不会把锁焊死。
+
+### 保真度探针
+
+`memory/probe.ts` 做 held-out 式校验：Dream 发布后，用原始经验里的具体事实去比对提炼结果，给出 `retention`（会不会丢事实）。目的是让「dream 之后变聪明了」这句话至少有一个可证伪的成本/效果指标，而不只上报 `hours_since`、`sessions_since` 这类成本数据。
+
+配合一条硬规则：**每条提炼出的经验必须引用 ≥2 个具体 episode id，否则丢弃**；原始经验日志永不删，记忆只是带指针的物化视图。两者一起挡「整合漂移」——多轮摘要后长出「要注意代码质量」这种自信的废话。
+
+方法与实测结果记录在 [EXPERIMENTS.md](./EXPERIMENTS.md)。
+
 ## 场景扩展
 
 新增平台只需实现 `EnvironmentPlugin`：注册能力，接收平台事件并转换为 `IncomingEvent`。插件不拿 Repositories、数据库或主体写服务。QQ/B站/后续平台没有各自的常驻自主 Agent；跨平台行动由同一个主体形成意图，再由局部执行组合工具。
@@ -102,7 +144,7 @@ Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用
 - 参数超过 4 个的函数接收请求对象（`InvocationRequest`、`SendInput`、`StepFrame`、`ChannelRequest`）。
 - 长函数按“一次只做一件事”拆成有名字的私有方法；分支链改为分发表（QQ 消息片段解析、TTS 供应商请求、媒体类型嗅探）。
 
-`npm run audit` 另外执行 tsc 与 43 个验收用例，并输出 `.quality/code-quality-gate/report.html`。审计用 `.code-quality-gate/run.lock` 保证单实例，收尾时删除该目录；若运行环境禁止 `rmdir`，会报 `Configuration ERROR: broker denied delete`，此时两项检查均已执行通过，应分别用 `npm run quality`、`tsc --noEmit`、`node scripts/junit.mjs` 复核，而不是改代码。
+`npm run audit` 另外执行 tsc 与 55 个验收用例，并输出 `.quality/code-quality-gate/report.html`。审计用 `.code-quality-gate/run.lock` 保证单实例，收尾时删除该目录；若运行环境禁止 `rmdir`，会报 `Configuration ERROR: broker denied delete`，此时两项检查均已执行通过，应分别用 `npm run quality`、`tsc --noEmit`、`node scripts/junit.mjs` 复核，而不是改代码。
 
 ## 自动化验收
 
@@ -119,6 +161,10 @@ Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用
 `test/runtime.test.ts` 与 `test/process.test.ts` 验证自主初始化、局部执行、直接动作、事件竞态、调度失效、原子回滚、Dream 增量发布、崩溃后复用写回执、预算、HTTP、插件以及真实进程启动/停止。
 
 `test/autonomy.test.ts` 验证三件事：长跑 150 轮后每轮上下文仍不超过 `ContextLimits`（增长只发生在经验日志，不在上下文）；决策越权时目标、执行、日程整体回滚；入口载荷超过 `payloadBudget` 时被拒绝且不落库。
+
+`test/dream.test.ts` 验证门控顺序（G1–G6 各自的拦截原因）、G3 节流确实阻止重复扫描、显著性权重排序（失败 > 纠正 > 新信息）、门控记账不回灌、锁在作业失败后能释放、以及「≥2 条证据」的校验规则。
+
+`scripts/evaluate.ts` 是接真实模型的长跑评估（压缩时间轴），产出 `.quality/eval/<label>/summary.json`。它需要 `.env` 里的 `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`，默认不给写能力，可用 `ENABLE_NOTE` 切换。它不进 CI，也不计入验收用例数。
 
 ## 场景 session 与 self 的触发边界
 

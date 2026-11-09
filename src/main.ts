@@ -6,8 +6,9 @@ import { sqliteAdmin } from './infrastructure/sqlite/admin.js';
 import { composeAgent } from './app/agent.js';
 import { ConfigSchema } from './app/config.js';
 import { CapabilityRegistry } from './capabilities/registry.js';
-import { registerBraveSearch, registerMemory } from './integrations/builtin.js';
+import { registerBraveSearch, registerMemory, registerNotes } from './integrations/builtin.js';
 import { OpenAICompatibleModel } from './infrastructure/models/openai-compatible.js';
+import { createDreamLock } from './infrastructure/locks/dream-lock.js';
 import { createServer } from './infrastructure/http/server.js';
 import { loadPlugins } from './integrations/loader.js';
 import { createQqEnvironment } from './infrastructure/qq/environment.js';
@@ -30,8 +31,9 @@ if (config.qq) {
   plugins.push(qq);
 }
 const model = new OpenAICompatibleModel({ baseUrl: process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1', apiKey: LLM_API_KEY, model: LLM_MODEL });
-const agent = composeAgent(repositories, model, capabilities, config);
+const agent = composeAgent(repositories, model, capabilities, { ...config, dreamLock: createDreamLock(resolve(process.env.DREAM_LOCK_PATH ?? 'data/dream.lock')) });
 registerMemory(capabilities, agent.memory, agent.experience);
+registerNotes(capabilities, agent.experience);
 capabilities.validate(config.boundaries.allowedTools, config.boundaries.allowedTools);
 const runtime = agent.runtime;
 runtime.start();

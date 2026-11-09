@@ -1,4 +1,4 @@
-import type { ExperienceRepository, MemoryRepository, ReflectionRepository } from '../../memory/ports.js';
+import type { DreamState, DreamStateRepository, ExperienceRepository, MemoryRepository, ReflectionRepository } from '../../memory/ports.js';
 import type { DreamVersion, Memory, Reflection } from '../../memory/types.js';
 import type { Store } from './database.js';
 import { searchTerms, matchSql } from './search.js';
@@ -24,10 +24,20 @@ export class SqliteMemoryRepository implements MemoryRepository {
     this.db.put('memories', memory.id, memory);
   }
   cursor() { return this.db.get<number>('meta', 'dreamCursor') ?? 0; }
+  count() { return Number(this.db.db.prepare("SELECT COUNT(*) AS n FROM documents WHERE collection='memories'").get()!.n); }
   publishDream(version: DreamVersion) {
     this.db.put('dreams', version.id, version);
     this.db.put('meta', 'dreamCursor', version.cutoff);
   }
+}
+/** 门控状态与记忆内容分开存，避免「整理记忆」顺手改掉「何时该整理」。 */
+export class SqliteDreamStateRepository implements DreamStateRepository {
+  constructor(private readonly db: Store) {}
+  read(): DreamState {
+    return this.db.get<DreamState>('meta', 'dreamState')
+      ?? { lastAt: 0, lastScanAt: 0, runsToday: 0, runDay: -1, blocked: {} };
+  }
+  write(state: DreamState) { this.db.put('meta', 'dreamState', state); }
 }
 export class SqliteReflectionRepository implements ReflectionRepository {
   constructor(private readonly db: Store) {}
