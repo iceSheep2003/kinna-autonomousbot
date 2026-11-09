@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { qqBudget } from './budget.js';
 import type { OneBotPort, QqState } from './ports.js';
 import { OneBotUncertain } from './ports.js';
 import type { QqConfig, Segment, SendReceipt, Target } from './types.js';
@@ -49,19 +50,19 @@ export class QqMessaging {
   }
   async quote(target: Target, id: string, signal: AbortSignal) {
     let current = id; const seen = new Set<string>(); const chain: unknown[] = [];
-    for (let depth = 0; depth < 3 && current && !seen.has(current); depth++) {
+    for (let depth = 0; depth < qqBudget.quoteDepth && current && !seen.has(current); depth++) {
       seen.add(current); const result = await this.message(target, current, signal);
-      const parts = segments(result.message); const text = parts.filter(p => p.type === 'text').map(p => String(p.data.text ?? '')).join('').slice(0, 2400);
+      const parts = segments(result.message); const text = parts.filter(p => p.type === 'text').map(p => String(p.data.text ?? '')).join('').slice(0, qqBudget.messageChars);
       chain.push({ ...this.view(target, current, result), text });
       current = String(parts.find(p => p.type === 'reply')?.data.id ?? '');
     }
     return { chain };
   }
   view(target: Target, messageId: string, message: Record<string, unknown>) {
-    let budget = 2400; let mediaCount = 0;
-    const parts = segments(message.message).slice(0, 50).map((part, index) => {
+    let budget = qqBudget.messageChars; let mediaCount = 0;
+    const parts = segments(message.message).slice(0, qqBudget.partsPerMessage).map((part, index) => {
       if (part.type === 'text') { const text = String(part.data.text ?? '').slice(0, budget); budget -= text.length; return { kind: 'text', text }; }
-      if (['image', 'record', 'mface', 'marketface'].includes(part.type) && mediaCount++ < 8) {
+      if (['image', 'record', 'mface', 'marketface'].includes(part.type) && mediaCount++ < qqBudget.mediaPerMessage) {
         const id = `qq:${this.config.selfId}:fetched:${messageId}:media:${index}`;
         const kind = part.type === 'record' ? 'audio' as const : 'image' as const;
         this.state.saveMedia({ id, kind, scope: target, eventId: `fetched:${messageId}`, url: String(part.data.url ?? '').slice(0, 4000), file: String(part.data.file ?? '').slice(0, 2000) });

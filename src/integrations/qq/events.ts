@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
+import { qqBudget } from './budget.js';
 import type { QqState } from './ports.js';
 import type { MediaRef, QqConfig, QqEvent, Segment, Target } from './types.js';
 
-const PART_LIMIT = 50;
-const MEDIA_LIMIT = 8;
 const TEXT_BUDGET = 6000;
 const MEDIA_TYPES = new Set(['image', 'record', 'video', 'mface', 'marketface']);
 const MESSAGE_TYPES = new Set(['group', 'private']);
@@ -87,7 +86,7 @@ function baseEvent(raw: Record<string, unknown>, config: QqConfig, envelope: Env
 
 function fillParts(raw: Record<string, unknown>, sink: PartSink): void {
   const parts = Array.isArray(raw.message) ? segments(raw.message) : [{ type: 'text', data: { text: String(raw.raw_message ?? '') } }];
-  parts.slice(0, PART_LIMIT).forEach((part, index) => applyPart(part, index, sink));
+  parts.slice(0, qqBudget.partsPerMessage).forEach((part, index) => applyPart(part, index, sink));
 }
 
 function applyPart(part: Segment, index: number, sink: PartSink): void {
@@ -124,7 +123,7 @@ function applyFace(part: Segment, sink: PartSink): void {
 
 /** 媒体只保存引用；带签名的 URL 留在平台侧，不进记忆。 */
 function applyMedia(part: Segment, index: number, sink: PartSink): void {
-  if (sink.media.length >= MEDIA_LIMIT) return;
+  if (sink.media.length >= qqBudget.mediaPerMessage) return;
   const resourceId = `${sink.id}:media:${index}`;
   const kind = part.type === 'record' ? 'audio' : part.type === 'video' ? 'video' : 'image';
   sink.media.push({ id: resourceId, kind, scope: sink.target, eventId: sink.id, file: String(part.data.file ?? '').slice(0, 2000), url: String(part.data.url ?? '').slice(0, 4000) });

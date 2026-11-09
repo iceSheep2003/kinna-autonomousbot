@@ -118,6 +118,8 @@ Dream 只拿 `MemoryRepository`、`ExperienceLog` 和反馈接口。不能调用
 
 `test/runtime.test.ts` 与 `test/process.test.ts` 验证自主初始化、局部执行、直接动作、事件竞态、调度失效、原子回滚、Dream 增量发布、崩溃后复用写回执、预算、HTTP、插件以及真实进程启动/停止。
 
+`test/autonomy.test.ts` 验证三件事：长跑 150 轮后每轮上下文仍不超过 `ContextLimits`（增长只发生在经验日志，不在上下文）；决策越权时目标、执行、日程整体回滚；入口载荷超过 `payloadBudget` 时被拒绝且不落库。
+
 ## 场景 session 与 self 的触发边界
 
 `execution/scene.ts` 管理持续的场景会话，各自保留观察游标、近期决策和前情。场景自己处理消息、使用工具或等待，工具回执仍在本地。`reflect` 是明确的上报决策，需要触发类型、摘要和本场景证据；只有此时才创建 `scene.reflection_requested` 来唤醒 self。普通回复、欢迎、戳一戳及工具成功不会自动走 self。

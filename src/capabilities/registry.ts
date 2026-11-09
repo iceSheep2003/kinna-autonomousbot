@@ -1,9 +1,8 @@
 import { z } from 'zod';
+import { payloadBudget } from '../shared/limits.js';
 import { UncertainOperation, type Capability, type CapabilityAccess, type InvocationRequest, type OperationRepository } from './ports.js';
 
 const TOOL_TIMEOUT_MS = 30000;
-/** 工具返回值必须留在上下文预算内；完整大文件由插件保存为资源引用。 */
-const MAX_RESULT_CHARS = 24000;
 
 export class CapabilityRegistry implements CapabilityAccess {
   constructor(private readonly operations: OperationRepository) {}
@@ -43,7 +42,8 @@ export class CapabilityRegistry implements CapabilityAccess {
     }
   }
   private assertSize(result: unknown): void {
-    if (JSON.stringify(result ?? null).length > MAX_RESULT_CHARS) throw new Error('Tool output too large; return resource references');
+    // 工具返回值必须留在上下文预算内；完整大文件由插件保存为资源引用。
+    if (JSON.stringify(result ?? null).length > payloadBudget.toolResultChars) throw new Error('Tool output too large; return resource references');
   }
   private resolve(name: string, allowed: string[]): Capability {
     const tool = this.tools.get(name);

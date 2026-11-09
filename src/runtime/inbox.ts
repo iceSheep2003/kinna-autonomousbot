@@ -1,10 +1,10 @@
 import type { UnitOfWork } from '../shared/transaction.js';
+import { payloadBudget } from '../shared/limits.js';
 import type { ExperienceRepository } from '../memory/ports.js';
 import type { SelfInbox } from '../self/ports.js';
 import type { JobQueue, RuntimeRepository } from './ports.js';
 import { EventSchema, type IncomingEvent } from './types.js';
 
-const MAX_EVENT_CHARS = 24000;
 /** 场景会话的接收口；inbox 只转交，不认识场景内部结构。 */
 type SceneReceiver = (scene: { id: string; environment: string; scope: Record<string, string> }, kind: string, data: unknown, now: number) => void;
 
@@ -43,7 +43,7 @@ export class Inbox implements SelfInbox {
   }
   ingest(raw: IncomingEvent, now = Date.now()): { duplicate: boolean } {
     const event = EventSchema.parse(raw);
-    if (JSON.stringify(event).length > MAX_EVENT_CHARS) throw new Error('Event too large; provide resource reference');
+    if (JSON.stringify(event).length > payloadBudget.eventChars) throw new Error('Event too large; provide resource reference');
     return this.transaction.run(() => this.accept(event, now));
   }
   private accept(event: IncomingEvent, now: number): { duplicate: boolean } {

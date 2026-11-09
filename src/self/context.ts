@@ -1,4 +1,5 @@
 import type { Boundaries, ContextLimits } from '../shared/limits.js';
+import { payloadBudget } from '../shared/limits.js';
 import type { SubjectView } from '../subject/ports.js';
 import type { MemoryView } from '../memory/ports.js';
 import type { ExecutionView } from '../execution/ports.js';
@@ -37,7 +38,7 @@ export class SelfContextBuilder {
   build(trigger: unknown, previousAttemptError: string | undefined, now: number) {
     const cursor = this.session.cursor();
     const observations = this.inbox.read(cursor, this.limits.observations);
-    const query = JSON.stringify(observations).slice(0, 3000);
+    const query = JSON.stringify(observations).slice(0, payloadBudget.recallQueryChars);
     return { cursor, now, trigger, previousAttemptError, subject: this.subject.read(),
       goals: this.subject.goals(query, this.limits.goals), memories: this.memory.recall(query, this.limits.memories),
       observations, recent: this.session.recentDecisions(this.limits.recentTurns),
