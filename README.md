@@ -163,7 +163,10 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
 | `people` / `memory.index` / `goals` / `scenes` / … | 文档存储（JSON） | 量小、永远按 id 取整条 |
 
 **不做全文索引**：真实一年才 4 千条，全表扫几毫秒；FTS 的多一层维护成本不划算。
-详见 [docs/memory-storage.md](docs/memory-storage.md)。
+
+- **存储实录（先看这个）**：[docs/memory-storage.html](docs/memory-storage.html) · [PNG](docs/memory-storage.png)
+  —— 从真实生成的库里 `sqlite3` dump 出来的表结构、数据行、查询计划
+- 设计取舍：[docs/memory-storage.md](docs/memory-storage.md)
 
 ### 记忆机制文档
 

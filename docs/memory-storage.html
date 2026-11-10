@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记忆存储实录</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#6b6b6b;--line:#dcd8d0;--bg:#faf8f4;--card:#fff;
+    --sql:#2c4a7c;--mem:#2f6f4f;--doc:#8a5a2b;--key:#5a4a7a;--str:#a33;--num:#2a6a8a;--cmt:#8a8578}
+  *{box-sizing:border-box}
+  body{margin:0;padding:48px 32px 90px;background:var(--bg);color:var(--ink);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",sans-serif}
+  .wrap{max-width:1020px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 36px;font-size:14px}
+  h2{font-size:17.5px;margin:52px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h2 .n{color:var(--muted);font-weight:400;margin-right:10px}
+  .lead{color:var(--muted);font-size:13.5px;margin:8px 0 16px}
+  pre{margin:0;padding:15px 17px;background:#fbfaf7;border:1px solid var(--line);border-radius:6px;
+    overflow-x:auto;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+  pre .k{color:var(--key)} pre .s{color:var(--str)} pre .n2{color:var(--num)} pre .c{color:var(--cmt);font-style:italic}
+  pre .ok{color:var(--mem);font-weight:600} pre .no{color:#b3ada2}
+  code{background:#f0ede7;padding:1px 5px;border-radius:3px;font-size:12.5px;font-family:ui-monospace,monospace}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:500;font-size:12px;background:#f5f2ec}
+  td:first-child{font-family:ui-monospace,monospace;font-size:12.5px;white-space:nowrap}
+  .note{background:#fdf6e8;border-left:3px solid #c99a3f;padding:11px 15px;font-size:13px;margin:16px 0;border-radius:0 4px 4px 0}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;margin-left:8px;vertical-align:2px;font-weight:500}
+  .t-rel{background:#e7f2eb;color:var(--mem)} .t-doc{background:#f6efe4;color:var(--doc)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+  @media(max-width:760px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>记忆存储实录</h1>
+<p class="sub">下面每一段都是从一个真实生成的 <code>agent.sqlite</code> 里 <code>sqlite3</code> dump 出来的，不是设计描述。</p>
+
+<!-- 1 -->
+<h2><span class="n">01</span>一个库文件的全部内容</h2>
+<p class="lead">整个 agent 就一个 SQLite 文件。里面 8 张表 + 9 个索引：</p>
+<pre>table | <span class="ok">documents</span>      <span class="c">← 小集合用文档存（人物、索引、goals、meta…）</span>
+table | <span class="ok">memories</span>       <span class="c">← 记忆主体，关系表</span>
+table | <span class="ok">memory_evidence</span> <span class="c">← 证据指针，可反查</span>
+table | experience     <span class="c">← 经验流水（append-only）</span>
+table | turns          <span class="c">← 会话决策记录</span>
+table | jobs           <span class="c">← 任务队列</span>
+table | seen_events    <span class="c">← 去重</span>
+table | model_calls    <span class="c">← 模型调用计数（限流）</span>
+
+index | memories_scope   (scope, status, updated_at DESC)
+index | memories_subject (subject_user_id, status)
+index | memories_stale   (status, last_accessed_at)
+index | memories_updated (updated_at DESC)
+index | memory_evidence_seq (seq)
+index | experience_source, jobs_active, jobs_due, turns_session</pre>
+
+<!-- 2 -->
+<h2><span class="n">02</span>记忆本体：memories 表<span class="tag t-rel">关系表</span></h2>
+<pre>CREATE TABLE memories (
+  id              TEXT PRIMARY KEY,
+  content         TEXT NOT NULL,              <span class="c">-- 只有这一句会进上下文</span>
+  scope           TEXT NOT NULL DEFAULT 'owner',
+  subject_user_id TEXT,                       <span class="c">-- 这条事实关于谁</span>
+  visibility      TEXT NOT NULL DEFAULT 'group',
+  origin_user_id  TEXT,                       <span class="c">-- 谁说的（群内可见的个人事实需要它）</span>
+  kind            TEXT NOT NULL DEFAULT 'observation',
+  fact_type       TEXT,                       <span class="c">-- preference/fact/boundary/event/open_loop</span>
+  mention_policy  TEXT,                       <span class="c">-- 能不能主动提</span>
+  persona_summary TEXT,
+  status          TEXT NOT NULL DEFAULT 'active',
+  importance      INTEGER NOT NULL DEFAULT 1,
+  confidence      REAL NOT NULL DEFAULT 1,
+  revision        INTEGER NOT NULL DEFAULT 1,
+  merged_into     TEXT,                       <span class="c">-- 被压缩进哪一条</span>
+  source_event_id TEXT,
+  expires_at      INTEGER,
+  last_accessed_at INTEGER,                   <span class="c">-- 上次被想起来（归档判断用）</span>
+  access_count    INTEGER NOT NULL DEFAULT 0,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  evidence        TEXT NOT NULL DEFAULT '[]'  <span class="c">-- 指向经验流水的 seq 列表</span>
+);</pre>
+
+<!-- 3 -->
+<h2><span class="n">03</span>里面真实存着的行</h2>
+<pre>id      scope            fact_type   status      importance  content
+------  ---------------  ----------  ----------  ----------  ------------------------------
+mem-a1  <span class="ok">owner</span>            preference  active      5           他喜欢别人叫全名，不喜欢被叫小名
+mem-a2  <span class="ok">owner</span>            fact        active      4           他的长期目标是明年考 408，目标 110 分
+mem-b1  group:330707267  event       active      4           这个群里在聊华师保研，他担心校企合作的就业风险
+mem-b2  group:330707267  event       active      3           牢e 在重做 bot，原 bot 失效只能读消息
+mem-b3  group:330707267  preference  active      2           他计划国庆休息 13 天
+mem-b4  group:330707267  fact        <span class="no">superseded</span>  1           （已并入 mem-b2）牢e 在改代码
+mem-b5  group:330707267  fact        <span class="no">archived</span>    1           很久以前提过想学 Rust
+mem-c1  group:866795853  boundary    active      5           这个群出现过疑似密钥，不应复述</pre>
+
+<p class="lead">四种状态都在里面，不是概念：</p>
+<table>
+  <tr><th>status</th><th>含义</th><th>会进上下文吗</th></tr>
+  <tr><td>active</td><td>有效</td><td>会（检索命中时）</td></tr>
+  <tr><td>superseded</td><td>已被压缩进另一条（<code>merged_into='mem-b2'</code>）</td><td>不会，但能追回</td></tr>
+  <tr><td>archived</td><td>冷掉了，沉下去</td><td>默认不会，<code>memory.search</code> 主动回想能找到并恢复</td></tr>
+  <tr><td>candidate</td><td>还没确认</td><td>默认不会</td></tr>
+</table>
+
+<!-- 4 -->
+<h2><span class="n">04</span>一条记忆的每个字段</h2>
+<p class="lead"><code>mem-b1</code> 完整展开（<code>∅</code> 表示 NULL）：</p>
+<pre>id               = mem-b1
+content          = 这个群里在聊华师保研，他担心校企合作的就业风险
+scope            = group:330707267
+subject_user_id  = 3485823460        <span class="c">← 关于这个人</span>
+visibility       = group             <span class="c">← 群里可见</span>
+origin_user_id   = ∅
+kind             = observation       <span class="c">← 看到的，不是推断</span>
+fact_type        = event
+mention_policy   = soft_echo
+persona_summary  = ∅
+status           = active
+importance       = 4
+confidence       = 0.8
+revision         = 1
+merged_into      = ∅
+source_event_id  = ∅
+expires_at       = ∅
+last_accessed_at = ∅
+access_count     = 0
+created_at       = 1794140708940
+updated_at       = 1794140708940
+evidence         = [102,202]         <span class="c">← 凭这两句原话</span></pre>
+
+<!-- 5 -->
+<h2><span class="n">05</span>证据：单独一张表，能反查</h2>
+<div class="two">
+  <div>
+    <p class="lead">memory_evidence</p>
+<pre>memory_id  seq
+---------  ---
+mem-a1     100
+mem-a1     200
+mem-a2     101
+mem-b1     102
+mem-b1     202</pre>
+  </div>
+  <div>
+    <p class="lead">为什么不用 JSON 数组就完了</p>
+    <p style="font-size:13px;color:var(--muted)">因为要能反问：<b>哪些记忆引用了第 100 条原话？</b></p>
+<pre>SELECT memory_id FROM memory_evidence
+WHERE seq=100;
+→ mem-a1</pre>
+    <p style="font-size:13px;color:var(--muted);margin-top:10px">撤回一条原话时，就知道该连带处理哪几条记忆。</p>
+  </div>
+</div>
+
+<!-- 6 -->
+<h2><span class="n">06</span>其他东西在 documents 表里<span class="tag t-doc">文档存储</span></h2>
+<p class="lead">同一张表，按 <code>collection</code> 分。这些量小、永远按 id 取整条：</p>
+<pre>collection     id
+-------------  ---------------
+people         3485823460        <span class="c">← 人物</span>
+memory.index   owner             <span class="c">← 索引（每个作用域一份）</span>
+memory.index   group:330707267
+goals          goal-1            <span class="c">← 目标</span>
+meta           dreamCursor       <span class="c">← 游标</span></pre>
+
+<p class="lead" style="margin-top:20px">人物（<code>people</code>）的 body 就是一个 JSON：</p>
+<pre>{
+  <span class="k">"userId"</span>: <span class="s">"3485823460"</span>,
+  <span class="k">"names"</span>: [<span class="s">"ending_walker03"</span>, <span class="s">"牢e"</span>, <span class="s">"群友3460"</span>],
+  <span class="k">"portrait"</span>: <span class="s">"群里的计算机考研/408答疑与规划者，也做 QQ bot 和 LLM 工具开发"</span>,
+  <span class="k">"portraitEvidence"</span>: [<span class="s">"mem-b1"</span>, <span class="s">"mem-b2"</span>],
+  <span class="k">"notes"</span>: [<span class="s">"正在重做 bot"</span>, <span class="s">"国庆休息 13 天"</span>],
+  <span class="k">"firstSeenAt"</span>: <span class="n2">1790857508940</span>, <span class="k">"lastSeenAt"</span>: <span class="n2">1794313508940</span>,
+  <span class="k">"groups"</span>: [<span class="s">"330707267"</span>]
+}</pre>
+
+<p class="lead" style="margin-top:20px">索引（<code>memory.index</code>）每个作用域一份：</p>
+<pre>--- owner ---
+  [称呼偏好]   喜欢被别人叫全名              → 展开: mem-a1
+  [长期目标]   明年考 408，目标 110           → 展开: mem-a2
+--- group:330707267 ---
+  [择校与保研] 选了华师保研，担心校企合作风险    → 展开: mem-b1</pre>
+
+<!-- 7 -->
+<h2><span class="n">07</span>索引真的在用（EXPLAIN QUERY PLAN）</h2>
+<p class="lead">这是 SQLite 自己的查询计划，不是我说的：</p>
+<pre><span class="c">-- 候选池：按作用域取</span>
+SEARCH memories USING INDEX <span class="ok">memories_scope</span> (scope=? AND status=?)
+USE TEMP B-TREE FOR ORDER BY      <span class="c">← 这个限制见下面说明</span>
+
+<span class="c">-- 归档扫描：每天跑一次</span>
+SEARCH memories USING INDEX <span class="ok">memories_stale</span> (status=? AND last_accessed_at&lt;?)
+
+<span class="c">-- 按人取事实：写人物画像时用</span>
+SEARCH memories USING INDEX <span class="ok">memories_subject</span> (subject_user_id=? AND status=?)</pre>
+
+<div class="note">
+<b>一个没解决的限制。</b><code>ORDER BY updated_at</code> 仍然走临时 B 树——因为 <code>status IN (...)</code> 是多值，
+SQLite 用不上索引里后续列的排序。要消掉得拆成 UNION 或改成单值 status。
+<b>几千条的规模下不值得</b>，所以留着并写清楚，而不是假装没有。
+</div>
+
+<!-- 8 -->
+<h2><span class="n">08</span>一次对话是怎么落进去的</h2>
+<pre><span class="c">① 消息进来（不等模型，直接追加）</span>
+   INSERT INTO experience(at, source, kind, data)
+   VALUES (1794313508940, <span class="s">'session:group-330707267'</span>, <span class="s">'message'</span>,
+           <span class="s">'{"nickname":"牢e","text":"华师那个保研项目是校企合作"}'</span>);
+
+<span class="c">② 顺手认人（代码做，不调模型）</span>
+   <span class="c">-- 观察到 userId + nickname → upsert 到 documents 的 people 集合</span>
+
+<span class="c">③ 夜里 Dream 提炼（这一步才调模型）</span>
+   INSERT INTO memories (...) VALUES (...);
+   INSERT INTO memory_evidence(memory_id, seq) VALUES (<span class="s">'mem-b1'</span>, <span class="s">102</span>);
+   <span class="c">-- 同一次里还会：升级到 owner、合并重复、重建索引、归档冷掉的、写人物画像</span>
+
+<span class="c">④ 下次醒来读</span>
+   SELECT * FROM memories
+   WHERE status IN (<span class="s">'active'</span>,<span class="s">'candidate'</span>) AND scope IN (<span class="s">'owner'</span>, <span class="s">'group:330707267'</span>)
+   ORDER BY updated_at DESC LIMIT 160;        <span class="c">-- 走 memories_scope</span>
+   <span class="c">-- 再在内存里按 access.ts 验权、分池、IDF 排序、预算渲染</span></pre>
+
+<!-- 9 -->
+<h2><span class="n">09</span>一句话总结</h2>
+<table>
+  <tr><th>东西</th><th>存在哪</th><th>怎么取</th></tr>
+  <tr><td>记忆</td><td><code>memories</code> 表（关系表）</td><td>按 scope/status 走索引取候选池，再内存里排序渲染</td></tr>
+  <tr><td>证据</td><td><code>memory_evidence</code> 表</td><td>按 seq 反查，或按 memory_id 取全部</td></tr>
+  <tr><td>经验流水</td><td><code>experience</code> 表</td><td>按 seq 游标增量读</td></tr>
+  <tr><td>人物</td><td><code>documents</code> / collection=<code>people</code></td><td>按 userId 取整条 JSON</td></tr>
+  <tr><td>索引</td><td><code>documents</code> / collection=<code>memory.index</code></td><td>按 scope 取整条 JSON</td></tr>
+  <tr><td>目标/场景/日程/待办</td><td><code>documents</code> 各集合</td><td>按 id 取整条 JSON</td></tr>
+</table>
+
+<div class="note" style="margin-top:26px">
+<b>为什么不全用关系表，也不全用文档。</b>
+记忆每天 12 条、一年 4 千、过滤条件多 → 关系表值得；
+人物 200 个、索引每作用域一份、目标几十个 → 永远按 id 取整条，建表只会多出一堆没人查的列。
+<b>判断依据是「这个集合将来会被按字段查吗」，不是「统不统一」。</b>
+</div>
+
+</div>
+</body>
+</html>
