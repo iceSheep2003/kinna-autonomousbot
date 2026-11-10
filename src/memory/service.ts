@@ -19,6 +19,8 @@ import { rankMemories, type RankingWeights } from './ranking.js';
 import { DEFAULT_MEMORY_BUDGET_CHARS, renderMemoryContext } from './render.js';
 import { contradiction, decideDedupe } from './dedupe.js';
 import { buildPromotion, refusePromotion } from './promote.js';
+import { revive } from './forget.js';
+import { inverseFrequency } from './text.js';
 import type { ExperienceLog } from './ports.js';
 
 export interface MemoryServiceOptions {
@@ -50,8 +52,20 @@ export class MemoryService implements MemoryView {
    * 兼容旧调用方：只拿事实数组，不带提及策略。新上下文请用 context。
    * `scope` 不传时用服务默认值（owner）；传 `group:xxx` 时能读到 owner + 这个群。
    */
-  recall(query: string, limit: number, scope?: string): Memory[] {
-    return this.retrieve(this.request(query, limit, scope)).map(hit => hit.memory);
+  recall(query: string, limit: number, scope?: string, options: { includeArchived?: boolean } = {}): Memory[] {
+    const hits = this.retrieve({ ...this.request(query, limit, scope), ...options });
+    // 归档的旧记忆被主动想起来，就恢复：归档判断可能出错，遗忘必须是可逆的。
+    if (options.includeArchived) this.reviveArchived(hits.map(hit => hit.memory), this.now());
+    return hits.map(hit => hit.memory);
+  }
+
+  /** 把真正被想起的归档记忆恢复成 active。只动 archived，别的不碰。 */
+  private reviveArchived(memories: readonly Memory[], now: number): void {
+    for (const memory of memories) {
+      if ((memory.status ?? 'active') !== 'archived') continue;
+      this.repository.publish(revive(memory, now));
+      this.experience?.record('self', 'memory.revived', { id: memory.id, scope: memory.scope }, now);
+    }
   }
   context(request: RecallRequest): MemoryContext {
     const budget = request.budgetChars ?? this.options.budgetChars ?? DEFAULT_MEMORY_BUDGET_CHARS;
@@ -72,9 +86,11 @@ export class MemoryService implements MemoryView {
     const general = rows.filter(memory => (memory.scope ?? 'owner') === 'owner');
     const scoped = rows.filter(memory => (memory.scope ?? 'owner') !== 'owner');
     const generalQuota = general.length === 0 ? 0 : Math.max(1, Math.floor(request.limit * 0.4));
+    // 字组区分度从当前候选池算：池子就是这次比较的范围，不需要全库统计。
+    const idf = inverseFrequency(rows.map(memory => memory.content));
     const rank = (subset: typeof rows, limit: number) => limit <= 0 ? [] : rankMemories(subset, {
       now: request.now, query: request.query, limit,
-      subjectUserId: request.subjectUserId, weights: this.options.weights,
+      subjectUserId: request.subjectUserId, weights: this.options.weights, idf,
     });
     const hits = [...rank(general, generalQuota), ...rank(scoped, request.limit - generalQuota)]
       .sort((a, b) => b.score - a.score)

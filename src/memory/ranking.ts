@@ -8,7 +8,7 @@
  * 纯函数，无 I/O、无时钟读取（now 由调用方给）。
  */
 import { GROUP_SUBJECT, type Memory, type RetrievalHit } from './types.js';
-import { similarity } from './text.js';
+import { similarity, weightedSimilarity } from './text.js';
 
 export interface RankingWeights {
   lexical: number; importance: number; recency: number;
@@ -21,11 +21,20 @@ export const defaultRankingWeights: RankingWeights = {
 export interface RankOptions {
   now: number; query: string; limit: number;
   subjectUserId?: string; weights?: Partial<RankingWeights>;
+  /** 语料的字组区分度；不传就退回等权 Jaccard（老调用方不受影响）。 */
+  idf?: Map<string, number>;
 }
 
-/** 候选集内归一化；全一样时都给满分，避免除以 0 把整批记忆打成 0 分。 */
-function lexicalScores(rows: readonly Memory[], query: string): Map<string, number> {
-  const raw = rows.map(memory => ({ id: memory.id, score: similarity(memory.content, query) }));
+/**
+ * 候选集内归一化；全一样时都给满分，避免除以 0 把整批记忆打成 0 分。
+ *
+ * 有 IDF 权重时用加权重叠：只共享「的」「什么」这种到处都有的组合不该算相关。
+ */
+function lexicalScores(rows: readonly Memory[], query: string, idf?: Map<string, number>): Map<string, number> {
+  const raw = rows.map(memory => ({
+    id: memory.id,
+    score: idf ? weightedSimilarity(query, memory.content, idf) : similarity(memory.content, query),
+  }));
   const scores = raw.map(item => item.score);
   const best = Math.max(0, ...scores);
   const worst = Math.min(...scores, best);
@@ -69,7 +78,7 @@ function scoreOne(memory: Memory, lexical: number, options: RankOptions, weights
 
 export function rankMemories(rows: readonly Memory[], options: RankOptions): RetrievalHit[] {
   const weights = { ...defaultRankingWeights, ...options.weights };
-  const lexical = lexicalScores(rows, options.query);
+  const lexical = lexicalScores(rows, options.query, options.idf);
   const hits = rows.map(memory => scoreOne(memory, lexical.get(memory.id) ?? 0, options, weights));
   hits.sort((left, right) => right.score - left.score
     || (right.memory.createdAt ?? 0) - (left.memory.createdAt ?? 0)

@@ -7,10 +7,12 @@ export type NoteClock = () => number;
 
 export function registerMemory(registry: CapabilityRegistrar, memory: MemoryView, experience: ExperienceLog, clock: NoteClock = Date.now): void {
   const input = z.object({ query: z.string().max(1000) });
-  registry.register({ name: 'memory.search', description: '回想一下：关于这个人、这件事，我都记得些什么？想不起来也没关系，会留个记号', effect: 'read', input,
+  registry.register({ name: 'memory.search', description: '回想一下：关于这个人、这件事，我都记得些什么？想不起来也没关系，会留个记号'
+      + '。会连「很久没用到、已经沉下去」的旧记忆一起找——主动回想时就该连那些一起翻，找到了就重新想起来。', effect: 'read', input,
     async run(raw) {
       const { query } = input.parse(raw);
-      const found = memory.recall(query, 10);
+      // 主动回想带上归档的：默认注入不该被旧事稀释，但"努力回想"就该翻得更深。
+      const found = memory.recall(query, 10, undefined, { includeArchived: true });
       // 检索落空是最便宜也最准的「记忆有缺口」信号：它直接指出下一次整合该往哪补。
       if (!found.length) experience.record('self', 'memory.miss', { query: query.slice(0, 200) }, clock());
       return found;

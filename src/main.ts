@@ -23,6 +23,7 @@ import { SqliteSessionStore } from './infrastructure/sqlite/bilibili-session.js'
 import { SessionHost } from './app/bilibili-session.js';
 import { registerSelfTodoTools } from './self/todo-tools.js';
 import { SqliteSelfTodoStore } from './infrastructure/sqlite/self-todos.js';
+import { MemoryForgetter } from './memory/forget-service.js';
 import { registerWebFetch } from './integrations/web-fetch.js';
 import { hotShareFromEnv } from './features/hot-share/config.js';
 import { deepSeekSearch } from './features/hot-share/search.js';
@@ -113,6 +114,11 @@ const hotShare = new HotShareWorker({
 if (hotShareConfig.enabled) {
   setInterval(() => { void hotShare.tick().catch(error => console.log('[hot_share] tick 失败:', String(error))); }, 60_000).unref();
 }
+// 遗忘：每天把冷掉的旧记忆归档（不删，主动回想还能找到）。
+const forgetter = new MemoryForgetter({ repository: repositories.memory,
+  record: (kind, data, now) => agent.experience.record('self', kind, data, now) });
+setInterval(() => { try { const r = forgetter.run(); if (r.archived) console.log(`[memory] 归档 ${r.archived} 条陈旧记忆`); }
+  catch (error) { console.log('[memory] 归档失败:', String(error)); } }, 24 * 3600_000).unref();
 // 每小时问一次「今天还差几条」，够了就不打扰。
 setInterval(() => { try { todoBoard.remind(); } catch (error) { console.log('[bilibili] todo remind failed:', String(error)); } }, 3600_000).unref();
 for (const plugin of plugins) await plugin.start?.({ emit: event => { runtime.ingest(event); } });

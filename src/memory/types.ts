@@ -175,5 +175,7 @@ export interface RecallRequest {
   query: string; limit: number; now: number;
   scope?: string; subjectUserId?: string;
   includeCandidates?: boolean; budgetChars?: number;
+  /** 主动回想时才带上已归档的：一时想不起，给个提示还能想起来。默认注入不带。 */
+  includeArchived?: boolean;
 }
 export type MemoryWriteOutcome = { kind: 'inserted' | 'reinforced' | 'superseded' | 'duplicate'; id: string };

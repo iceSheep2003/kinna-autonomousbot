@@ -20,6 +20,8 @@ export function isReadable(memory: Memory, request: RecallRequest): boolean {
 function statusAllows(memory: Memory, request: RecallRequest): boolean {
   const status = memory.status ?? 'active';
   if (status === 'active') return true;
+  if (status === 'archived') return request.includeArchived === true;
+  // candidate 是还没确认的，和「归档」不是一回事：确认与否看一个开关。
   return status === 'candidate' && request.includeCandidates === true;
 }
 

@@ -30,7 +30,7 @@ export interface ReflectionRepository { save(reflection: Reflection): void; get(
  */
 export interface MemoryView {
   /** scope 不传时用服务默认（owner）；传 `group:xxx` 时能读到 owner + 这个群。 */
-  recall(query: string, limit: number, scope?: string): Memory[];
+  recall(query: string, limit: number, scope?: string, options?: { includeArchived?: boolean }): Memory[];
   context?(request: RecallRequest): MemoryContext;
   preheat?(request: RecallRequest): MemoryContext;
   related?(request: RecallRequest): MemoryContext;
