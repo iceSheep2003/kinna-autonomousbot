@@ -479,3 +479,28 @@ memory.search("华师 保研")                → 主动回想，连归档的一
 </div>
 </body>
 </html>
+<!-- ============ 附：谁在回复 ============ -->
+<h2 style="margin-top:56px"><span class="n">附</span>谁在回复？scene 还是 self</h2>
+<p class="lead">实测（<code>npm run verify:qq</code>，打印模型每次被调用时的 role）：</p>
+
+<pre>role=<span class="b">self</span>   session=—                   transcript=false 索引=false 待办=false 说话人=false
+role=<span class="ok">scene</span>  session=qq:99:group:123     transcript=true  索引=false 待办=false 说话人=true</pre>
+
+<p class="lead"><b>群里回复由 scene 完成，不是 self。</b>self 只在启动时醒一次，之后是「没人时」才工作。</p>
+
+<table>
+  <thead><tr><th></th><th>scene</th><th>self</th></tr></thead>
+  <tbody>
+    <tr><td>什么时候</td><td>有人说话时</td><td>没人时 / 定时 / 被叫醒</td></tr>
+    <tr><td>看到什么</td><td>对话记录、说话人的事实、现场状态、索引</td><td>索引、待办、未读、目标、日程</td></tr>
+    <tr><td>能做什么</td><td>接话、调工具、请求反思</td><td>改目标、起执行、定日程、记笔记</td></tr>
+    <tr><td>人格</td><td colspan="2" style="text-align:center">同一份</td></tr>
+    <tr><td>记忆</td><td colspan="2" style="text-align:center">同一份</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+<b>一个启动期空窗。</b>实测里 <code>索引=false</code> 不是 bug，是时序：索引（和记忆）都由 Dream 提炼，
+新部署在 Dream 第一次跑之前，scene 手上什么都没有——所以「刚部署的第一天它什么都不记得」。
+这不是故障，但要知道：想让它在群里有记忆，得先让它跑够 Dream。
+</div>

@@ -41,8 +41,12 @@ const repositories = sqliteRepositories(store);
 const capabilities = new CapabilityRegistry(repositories.operations);
 // 第一轮真的发一句话，验证「自己说过的话进不进记录」
 let spoke = false;
+const rolesSeen = [];
 const model = { async decide(request) {
   const context = request.context;
+  rolesSeen.push({ role: request.role, sessionId: context?.session?.id,
+    hasTranscript: Array.isArray(context?.transcript), hasIndex: typeof context?.memoryIndex === 'string',
+    hasTodos: Array.isArray(context?.todos), hasSpeaker: context?.speaker !== undefined });
   if (context?.session !== undefined && !spoke) {
     spoke = true;
     return request.schema.parse({ type: 'tool', name: 'qq.send_message',
@@ -86,9 +90,14 @@ await new Promise(r => setTimeout(r, 500));
 send({ id: 4, message: [{ type: 'image', data: { url: 'https://x/1.jpg' } }, { type: 'text', data: { text: '这个书单你们看过吗' } }] });
 await new Promise(r => setTimeout(r, 800));
 
-console.log('\n=== 模型实际会看到的对话记录 ===');
-// 让 runtime 把事件投进 scene 会话
+// 先让 runtime 处理，模型才会被调用
 for (let i = 0; i < 3; i++) await agent.runtime.tick(Date.now() + i * 1000);
+
+console.log('\n=== 谁在回复？（模型被调用时的 role） ===');
+for (const r of rolesSeen) {
+  console.log(`  role=${r.role}  session=${r.sessionId ?? '—'}  transcript=${r.hasTranscript} 索引=${r.hasIndex} 待办=${r.hasTodos} 说话人=${r.hasSpeaker}`);
+}
+console.log('\n=== 模型实际会看到的对话记录 ===');
 const sceneRows = store.experiences(0, 50, `session:qq:${SELF}:group:${GROUP}`);
 for (const message of transcriptWindow(sceneRows, 6000)) {
   console.log(`  [${message.role}] ${message.content}`);
