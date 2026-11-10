@@ -146,6 +146,12 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
 - 批准与撤回：`POST /v1/bilibili/drafts/:id/approve` 只有持 `API_TOKEN` 的人能调；`bilibili.delete_post` 可撤回自己发过的评论/动态。
 - 已实测的写接口：`dynamic_svr/v1/dynamic_svr/create`（发动态）、`x/v2/reply/add`（发评论）、`x/v2/reply/del` 与 `rm_dynamic`（删除）。
 
+### 找什么看：先翻自己的记忆
+
+「今天看什么」不由平台推荐决定。self 先翻记忆（谁说过什么、哪件事还没弄明白、最近反复想到的话题），
+拿这些关键词用 `bilibili.search` 去找；`bilibili.discover`（推荐/热门/排行）只用来补充，
+实在想不起来时才退回推荐。工具描述里也写明了「不要用泛泛的词（比如『视频』『好看』）」。
+
 ### 每日任务（todo）
 
 目标不是「偶尔发一条」，而是**每天稳定地看三条、评论三条**。

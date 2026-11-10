@@ -63,7 +63,7 @@ const todoBoard = new TodoBoard({ store: new SqliteTodoStore(store), notify: (ki
 }), timezone: process.env.BILIBILI_TZ ?? 'Asia/Shanghai', quota: bilibiliConfig.dailyVideos });
 if (bilibiliConfig.enabled) {
   plugins.push(createBilibiliPlugin({
-    config: bilibiliConfig, video: bilibiliApi, messages: bilibiliApi, drafts: bilibiliDrafts, todo: todoBoard, feed: bilibiliApi,
+    config: bilibiliConfig, video: bilibiliApi, messages: bilibiliApi, drafts: bilibiliDrafts, todo: todoBoard, feed: bilibiliApi, search: bilibiliApi,
     heat: new DanmakuHeat(bilibiliTransport), stream: input => bilibiliApi.streamUrl(input),
     // 没配 publicBaseUrl 时截图以内联 data URL 给出，本地不用架隧道；配了就走 URL 省带宽。
     ...(bilibiliConfig.publicBaseUrl ? { publicBaseUrl: bilibiliConfig.publicBaseUrl } : {}),

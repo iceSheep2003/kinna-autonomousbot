@@ -55,6 +55,13 @@ export interface BilibiliFeed {
   }>>;
 }
 
+/** 按关键词找视频：让 self 能顺着自己记得的事去找，而不是只看平台推荐。 */
+export interface BilibiliSearch {
+  search(input: { query: string; limit: number; signal: AbortSignal }): Promise<Array<{
+    bvid: string; title: string; owner: string; durationSeconds: number; play: number; category: string;
+  }>>;
+}
+
 export interface BilibiliMessages {
   comments(input: { aid: number; bvid: string; limit: number; sort: 'time' | 'hot' }, signal: AbortSignal): Promise<Array<{ rpid: number; text: string; user: string; likes: number; replies: number; at: number }>>;
   postComment(input: { aid: number; bvid: string; message: string; rootRpid?: number; parentRpid?: number }, signal: AbortSignal): Promise<{ rpid: number }>;

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CapabilityRegistrar } from '../../capabilities/ports.js';
 import type { BilibiliConfig, Draft } from './types.js';
-import type { BilibiliFeed, BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
+import type { BilibiliFeed, BilibiliMessages, BilibiliSearch, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
 import type { DraftQueue } from './drafts.js';
 import { canReadVideo } from './policy.js';
 import { pickMoments } from './heat.js';
@@ -22,6 +22,8 @@ export interface BilibiliToolsDeps {
   drafts: DraftQueue;
   /** 发现视频：self 靠它挑今天看什么。不发 bvid 时就靠这个。 */
   feed?: BilibiliFeed;
+  /** 按关键词搜：让 self 顺着自己记得的事去找，而不是只看推荐。 */
+  search?: BilibiliSearch;
   /** 每日任务看板；没配置时 todo 工具不注册。 */
   todo?: TodoBoard;
 }
@@ -107,6 +109,7 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
   });
 
   if (deps.feed) registerDiscoverTool(registry, deps.feed);
+  if (deps.search) registerSearchTool(registry, deps.search);
   if (deps.todo) registerTodoTools(registry, deps.todo);
 
   registry.register({
@@ -134,6 +137,27 @@ function registerDiscoverTool(registry: CapabilityRegistrar, feed: BilibiliFeed)
       const input = raw as { limit: number; source: 'recommend' | 'popular' | 'ranking' };
       const videos = await feed.discover({ ...input, signal });
       return { source: input.source, videos };
+    },
+  });
+}
+
+/**
+ * 按关键词搜视频。
+ *
+ * 「今天看什么」不该只由平台推荐决定：self 有自己的记忆——记得在意什么话题、
+ * 谁说过什么、哪件事没弄明白。先想起这些，再拿关键词来找，才叫「从记忆里确定看什么」。
+ */
+function registerSearchTool(registry: CapabilityRegistrar, search: BilibiliSearch): void {
+  registry.register({
+    name: 'bilibili.search', description: '按关键词找视频。先想想自己记得什么、最近在意什么（用 memory.search 翻一遍），再用这里的词去找；不要用泛泛的词（比如「视频」「好看」）。',
+    effect: 'read', input: z.object({
+      query: z.string().min(1).max(80),
+      limit: z.number().int().min(1).max(20).default(8),
+    }),
+    async run(raw, { signal }) {
+      const input = raw as { query: string; limit: number };
+      const videos = await search.search({ ...input, signal });
+      return { query: input.query, videos };
     },
   });
 }

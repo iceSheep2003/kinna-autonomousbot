@@ -17,7 +17,7 @@
         "report": ".quality/tests.junit.xml",
         "format": "junit",
         "metrics": [
-          { "name": "执行用例", "path": "tests", "min": 157 },
+          { "name": "执行用例", "path": "tests", "min": 158 },
           { "name": "失败数", "path": "failures", "equals": 0 },
           { "name": "跳过数", "path": "skipped", "equals": 0 },
           { "name": "成功率", "path": "successRate", "equals": 100 }

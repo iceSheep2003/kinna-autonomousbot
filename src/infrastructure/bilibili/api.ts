@@ -1,4 +1,4 @@
-import type { BilibiliFeed, BilibiliMessages, BilibiliTransport, BilibiliVideo, VideoMeta } from '../../integrations/bilibili/ports.js';
+import type { BilibiliFeed, BilibiliMessages, BilibiliSearch, BilibiliTransport, BilibiliVideo, VideoMeta } from '../../integrations/bilibili/ports.js';
 import { BilibiliError } from './client.js';
 import { pickStream, type PlayData } from './stream.js';
 
@@ -14,7 +14,7 @@ interface ReplyRow {
 interface ReplyData { replies?: ReplyRow[] | null; hots?: ReplyRow[] | null; page?: { count?: number } }
 
 /** B 站账号的读写接口：视频信息、评论、发评论、发动态。写操作由传输层补 csrf。 */
-export class BilibiliApi implements BilibiliVideo, BilibiliMessages, BilibiliFeed {
+export class BilibiliApi implements BilibiliVideo, BilibiliMessages, BilibiliFeed, BilibiliSearch {
   constructor(private readonly transport: BilibiliTransport) {}
 
   async meta(bvid: string, page: number, signal: AbortSignal): Promise<VideoMeta> {
@@ -51,6 +51,21 @@ export class BilibiliApi implements BilibiliVideo, BilibiliMessages, BilibiliFee
     const data = await this.transport.request<{ list?: unknown[]; item?: unknown[] }>({ method: 'GET', path, query, signal: input.signal });
     const rows = (data.list ?? data.item ?? []).slice(0, limit) as Array<Record<string, unknown>>;
     return rows.map(row => normalizeVideo(row)).filter(item => item.bvid !== '');
+  }
+
+  /**
+   * 按关键词搜视频。
+   * 用 `search/all/v2` 而不是 `search/type`：后者不带 wbi 签名时返回空列表（实测），
+   * 而 all/v2 会把视频放在 result 里 result_type==='video' 的那一项下面。
+   */
+  async search(input: { query: string; limit: number; signal: AbortSignal }) {
+    const limit = Math.max(1, Math.min(20, input.limit));
+    const data = await this.transport.request<{ result?: Array<{ result_type?: string; data?: unknown[] }> }>({
+      method: 'GET', path: '/x/web-interface/search/all/v2', query: { keyword: input.query, page: 1 }, signal: input.signal,
+    });
+    const videoGroup = (data.result ?? []).find(group => group.result_type === 'video');
+    const rows = (videoGroup?.data ?? []).slice(0, limit) as Array<Record<string, unknown>>;
+    return rows.map(row => normalizeVideo({ ...row, title: stripTags(row.title) })).filter(item => item.bvid !== '');
   }
 
   async comments(input: { aid: number; bvid: string; limit: number; sort: 'time' | 'hot' }, signal: AbortSignal) {
@@ -110,13 +125,29 @@ const num = (value: unknown): number => Number.isFinite(Number(value)) ? Number(
  * 时长的坑最多：推荐给秒，有些接口给毫秒，排行榜干脆给 0（要另取）。
  */
 function normalizeVideo(row: Record<string, unknown>) {
-  const duration = num(row.duration);
   return {
     bvid: text(row.bvid, 20),
     title: text(row.title, 120),
-    owner: text((row.owner as { name?: unknown } | undefined)?.name),
-    durationSeconds: duration > 86_400 ? Math.round(duration / 1000) : duration,
+    // 搜索结果把 UP 放在 author，推荐/热门放在 owner.name。
+    owner: text(row.author) || text((row.owner as { name?: unknown } | undefined)?.name),
+    durationSeconds: secondsOf(row.duration),
     play: num((row.stat as { view?: unknown } | undefined)?.view),
     category: text(row.tname) || text(row.typename),
   };
+}
+
+/** 时长有四种写法：秒数、毫秒数、"mm:ss"、"hh:mm:ss"；统一成秒。 */
+function secondsOf(value: unknown): number {
+  if (typeof value === 'string' && value.includes(':')) {
+    const parts = value.split(':').map(Number);
+    if (parts.some(part => !Number.isFinite(part))) return 0;
+    return parts.reduce((total, part) => total * 60 + part, 0);
+  }
+  const raw = num(value);
+  return raw > 86_400 ? Math.round(raw / 1000) : raw;
+}
+
+/** 搜索结果的标题带 <em> 高亮标签，去掉再给模型看。 */
+function stripTags(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/<[^>]+>/g, '') : '';
 }

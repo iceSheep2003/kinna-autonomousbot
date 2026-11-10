@@ -1,7 +1,7 @@
 import type { EnvironmentPlugin } from '../plugin.js';
 import type { IncomingEvent } from '../../runtime/types.js';
 import type { BilibiliConfig } from './types.js';
-import type { BilibiliFeed, BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
+import type { BilibiliFeed, BilibiliMessages, BilibiliSearch, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
 import type { TodoBoard } from './todo-board.js';
 import type { DraftQueue } from './drafts.js';
 import { registerBilibiliTools } from './tools.js';
@@ -22,6 +22,8 @@ export interface BilibiliPluginOptions {
   todo?: TodoBoard;
   /** 发现视频；不配置时 bilibili.discover 不注册。 */
   feed?: BilibiliFeed;
+  /** 关键词搜索；不配置时 bilibili.search 不注册。 */
+  search?: BilibiliSearch;
   /** 轮询自己视频的评论，把别人对你说的话送进场景会话。 */
   pollMs?: number;
   /** 读自己空间最近的投稿；不提供时不做评论轮询（仍可用读/写草稿能力）。 */
@@ -77,7 +79,7 @@ export function createBilibiliPlugin(deps: BilibiliPluginOptions): EnvironmentPl
       registerBilibiliTools(registry, {
         config, video: deps.video, messages: deps.messages, drafts: deps.drafts,
         ...(deps.shots ? { shots: deps.shots } : {}), ...(deps.heat ? { heat: deps.heat } : {}),
-        ...(deps.stream ? { stream: deps.stream } : {}), ...(deps.todo ? { todo: deps.todo } : {}), ...(deps.feed ? { feed: deps.feed } : {}),
+        ...(deps.stream ? { stream: deps.stream } : {}), ...(deps.todo ? { todo: deps.todo } : {}), ...(deps.feed ? { feed: deps.feed } : {}), ...(deps.search ? { search: deps.search } : {}),
         ...(deps.publicBaseUrl ? { publicBaseUrl: deps.publicBaseUrl } : {}),
       });
     },

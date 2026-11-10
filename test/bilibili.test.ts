@@ -355,3 +355,22 @@ test('发现视频：把推荐/热门/排行榜的字段归一化，缺的给空
   assert.equal(list[1]!.owner, '');
   assert.equal(list[1]!.category, '');
 });
+
+test('搜索：字段与推荐不同（author / "mm:ss"），归一化后都要正确', async () => {
+  const { BilibiliApi } = await import('../src/infrastructure/bilibili/api.js');
+  const transport = { request: async () => ({ result: [
+    { result_type: 'video', data: [
+      { bvid: 'BV1xx4y1x7xx', title: '<em class="keyword">408</em> 串讲', author: '某UP', duration: '29:05', play: 1000, typename: '校园学习' },
+      { bvid: 'BV2yy4y1x7yy', title: '长视频', author: '另一位', duration: '2:48:05' },
+    ] },
+    { result_type: 'media_bangumi', data: [] },
+  ] }) };
+  const api = new BilibiliApi(transport as never);
+  const list = await api.search({ query: '408', limit: 5, signal: AbortSignal.timeout(1000) });
+  assert.equal(list.length, 2);
+  // 标题里的 <em> 高亮标签要去掉，否则模型会读到 HTML
+  assert.equal(list[0]!.title, '408 串讲');
+  assert.equal(list[0]!.owner, '某UP');
+  assert.equal(list[0]!.durationSeconds, 29 * 60 + 5);
+  assert.equal(list[1]!.durationSeconds, 2 * 3600 + 48 * 60 + 5);
+});
