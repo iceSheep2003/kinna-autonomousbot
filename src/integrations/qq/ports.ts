@@ -9,6 +9,9 @@ export interface QqState {
   event(id: string): QqEvent | undefined; saveEvent(event: QqEvent): void;
   pendingEvents(limit: number): QqEvent[];
   media(id: string): MediaRef | undefined; saveMedia(media: MediaRef): void;
+  /** 图片识别结果缓存：同一张图不重复分析。没有实现时每次都重新读。 */
+  imageSummary?(id: string): string | undefined;
+  saveImageSummary?(id: string, summary: string): void;
   knownMessage(id: string): { target: { type: 'group' | 'private'; id: string } } | undefined;
   rememberMessage(id: string, target: { type: 'group' | 'private'; id: string }): void;
   proposal(groupId: string): TitleProposal | undefined; saveProposal(proposal: TitleProposal): void;

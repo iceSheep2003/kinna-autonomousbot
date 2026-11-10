@@ -32,6 +32,8 @@ export interface QqQuoted {
   images: string[];
   /** 是否真的取到了内容；false 表示只拿到了 id（权限/已撤回/平台拒绝）。 */
   resolved: boolean;
+  /** 引用里的图片注册成媒体资源后的 id，供图形识别与 inspect_media 用。 */
+  imageResources?: string[];
 }
 
 export interface QqEvent {
