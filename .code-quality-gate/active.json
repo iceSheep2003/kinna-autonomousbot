@@ -1,0 +1,4 @@
+{
+  "manifest": ".code-quality-gate/tasks/AFFECT-MEMORY-3.json",
+  "config": "quality.config.json"
+}

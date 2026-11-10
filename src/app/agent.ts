@@ -102,7 +102,7 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const subject = new SubjectService(r.subject, new GoalService(r.goals, experience), new AffectService(r.subject, experience));
   // 情绪与好感度：状态机在 subject 层，由**场景**写（它见过那一轮），self 只读。
   const mood = new MoodSystem({ config: { ...defaultAffectConfig, ...(options.affect ?? {}) }, store: r.affect, clock: () => Date.now() });
-  const sceneAffect = createSceneAffect({ mood });
+  const sceneAffect = createSceneAffect({ mood, memory });
   let scenes: SceneSessions;
   const inbox = new Inbox({
     transaction: r.transaction, runtime: r.runtime, experience: r.experience, jobs: r.jobs, capacity: boundaries.maxPendingJobs,

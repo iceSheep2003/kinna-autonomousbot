@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "AFFECT-MEMORY",
+  "title": "显著的情绪事件变成针对某个人的记忆",
+  "requirements": [
+    "被怼/被夸这类显著事件要写进记忆，带 subjectUserId",
+    "普通起伏（±1、纯相关性加分）不写，避免记忆被噪声淹掉",
+    "单维小变化不写；总幅度够大才写"
+  ],
+  "testFiles": ["test/affect-memory.test.ts"],
+  "codeFiles": ["src/subject/appraisal.ts", "src/app/scene-affect.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

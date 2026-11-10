@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "AFFECT-MEMORY",
+  "attempts": 0,
+  "red": {
+    "time": "2026-11-10T13:53:57.894Z",
+    "snapshot": {
+      "contract": "c54c91296571b294a0bc4af1880c3f497553b7bc4f3ee6e63383de443d6af00a",
+      "protected": {
+        ".code-quality-gate/tasks/AFFECT-MEMORY.json": "3a70a2bb12409c354fe53d0500e7bef43d98b53cb79c4955b1b4c8ef1ec2b2c0",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/affect-memory.test.ts": "4dae5dd96c8c8bd0cb6e7943e500a67e1ddf226e79c1e198d559dbed4103d8af"
+      },
+      "code": {
+        "src/app/scene-affect.ts": "d2362aed6857eb7d38991e16be0165a7c5d25b5996a2952b8e91d10aa0c3f566",
+        "src/subject/appraisal.ts": "deedbe164a960816f9571d253a6b14ae6bd9055f447610351e4f63c635b0a71e"
+      }
+    },
+    "report": ".quality/code-quality-gate/AFFECT-MEMORY/red-ee305831-48f5-4e52-ae06-3444010ff7af.md"
+  }
+}

@@ -106,3 +106,22 @@ export function appraiseTurn(input: TurnAppraisalInput): TurnAppraisal {
     : praised ? { label: '开心' as const, intensity: 'slight' as const, reason: '被夸了一句' } : undefined;
   return { mood: { deltas: values, reason: reason.slice(0, 80) }, rapport, reaction };
 }
+
+/** 值得记住的门槛：情绪维度（好坏/压力）的显著变化。 */
+export const REMEMBER_THRESHOLD = 2;
+
+/**
+ * 这一轮要不要变成「关于某个人的记忆」。
+ *
+ * 判据是**维度**而不是总幅度：
+ * - `interest`/`sociability` 上涨只说明「有人找我」，那是状态，不是对某个人的印象；
+ * - `valence`/`stress` 明显变化才说明「他夸我 / 他怼我」，这才是该记住的。
+ *
+ * 门槛 2 而不是 1：单点波动太常见，记下来全是噪声。
+ * 这条规则让记忆里只留下真正有情绪分量的事，而不是「每句话都记一笔」。
+ */
+export function shouldRemember(mood: { deltas: Partial<MoodValues>; reason: string }): boolean {
+  const valence = Math.abs(mood.deltas.valence ?? 0);
+  const stress = Math.abs(mood.deltas.stress ?? 0);
+  return valence >= REMEMBER_THRESHOLD || stress >= REMEMBER_THRESHOLD;
+}

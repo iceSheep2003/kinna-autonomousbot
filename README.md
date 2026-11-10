@@ -210,6 +210,13 @@ scene 回复完 → 认知评价规则 → mood delta + rapport delta + 短时�
 **写的人必须是见过那一轮的人**：情绪由 scene 写，self 只读。
 self 看不到完整对话，让它写就是「事后想象」——这是之前接反的地方，已经改掉。
 
+**显著的情绪事件会变成「关于这个人的记忆」**：被怼/被夸这类带情绪分量的事会写进
+memory 并挂 `subjectUserId`，下次跟这个人说话时能被召回。普通寒暄和「有人找我」
+这类状态起伏不写——否则记忆里全是噪声。
+
+判据是**维度**不是总幅度：`interest`/`sociability` 上涨只说明「有人找我」，
+不是对这个人的印象；只有 `valence`/`stress` 的明显变化（≥2）才算。
+
 好感度按 `scope + QQ 号` 维护（B 站 UP 主不需要），有界 -100~100、七档阶段、
 每小时冷却、每日上限。实测：
 
@@ -217,6 +224,24 @@ self 看不到完整对话，让它写就是「事后想象」——这是之前
 被怼之后 valence=47.0 stress=53.0 sociability=46.0  好感度 -2
 被夸之后 valence=49.0 stress=53.0                     （冷却期内不加回）
 ```
+
+### 改代码的流程：走 cqg 的 TDD
+
+CQG 的 `audit` 只跑检查，**`gate` 才校验 test-first 工作流**：
+
+```bash
+cqg red  <TASK-ID>     # 要求 JUnit 报告里有真正的断言失败（import 错误不算）
+cqg green              # 实现后验证；测试在 red 后冻结，不能再改
+cqg gate               # 最终门禁，含 TDD 证据
+```
+
+三条踩过的坑：
+1. **只跑 `audit` 不算**——gate 会报 `No active task`，等于没有 TDD 证据
+2. **red 之后不能改测试**——`Tests changed after red` 会让 green 一直失败
+3. **red 阶段也要能暴露类型错误**——如果 manifest 只写 `acceptance`，测试里的类型问题
+   会拖到 green 才炸；写测试时就得是类型正确的
+
+task manifest 在 `.code-quality-gate/tasks/<ID>.json`，要列全 `testFiles` 和 `codeFiles`。
 
 ### 聊天时什么会唤醒 self
 

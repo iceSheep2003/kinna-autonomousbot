@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "id": "AFFECT-MEMORY-3",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-10T13:55:21.523Z",
+    "snapshot": {
+      "contract": "00cb9ac8415f3a46496229ac0e18746d221f8325f28f892acf5335e071bbae62",
+      "protected": {
+        ".code-quality-gate/tasks/AFFECT-MEMORY-3.json": "0d78fd9e9533eaaa1732b35fa15d27c406a7f6b759d83391ffc844f37fa770e4",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/affect-memory.test.ts": "43c2dc240bfd5d24d4a044608256968f0158b988082a0ec59edb690b5d790209"
+      },
+      "code": {
+        "src/app/scene-affect.ts": "27f658e74c7db812d7c3ad90447824956480bb457ea6423b5cac5ed909f60cce",
+        "src/subject/appraisal.ts": "302b10f6442105ce8c8afae7730e3d29c67807c05ad6f2a41fcaa9b928d41d7a"
+      }
+    },
+    "report": ".quality/code-quality-gate/AFFECT-MEMORY-3/red-b0ffb385-6208-4785-ae85-b6f26279f7a7.md"
+  },
+  "green": {
+    "time": "2026-11-10T13:55:27.865Z",
+    "snapshot": {
+      "contract": "00cb9ac8415f3a46496229ac0e18746d221f8325f28f892acf5335e071bbae62",
+      "protected": {
+        ".code-quality-gate/tasks/AFFECT-MEMORY-3.json": "0d78fd9e9533eaaa1732b35fa15d27c406a7f6b759d83391ffc844f37fa770e4",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/affect-memory.test.ts": "43c2dc240bfd5d24d4a044608256968f0158b988082a0ec59edb690b5d790209"
+      },
+      "code": {
+        "src/app/scene-affect.ts": "27f658e74c7db812d7c3ad90447824956480bb457ea6423b5cac5ed909f60cce",
+        "src/subject/appraisal.ts": "0d957c251cd8f3990c982b70b676681b7dfe07b0f3791da8fe73d55997cdd635"
+      }
+    },
+    "report": ".quality/code-quality-gate/AFFECT-MEMORY-3/green-9b801663-6c09-4dfd-91b3-ab870eddd348.md"
+  }
+}
