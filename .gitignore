@@ -4,3 +4,6 @@ data/
 .env
 *.sqlite*
 .quality/
+
+# 线上真实记忆导出（含用户隐私），只在本地做验证，不入库
+test/fixtures/
