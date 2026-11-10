@@ -29,7 +29,9 @@ KEY=$(curl -s -X POST -H "Authorization: Bearer $API_TOKEN" $BASE/v1/bilibili/au
 curl -s -H "Authorization: Bearer $API_TOKEN" $BASE/v1/bilibili/auth/qr/$KEY   # 直到 status=ok
 ```
 
-会话落在同一个库里，带 `refresh_token`；之后每 6 小时检查一次、按需自动续期，不用再扫。
+会话落在同一个库里，带 `refresh_token`；之后每 6 小时检查一次是否该续期。
+
+> **2026-11-10 实测**：B 站的自动续期依赖 `/correspond/1/{path}` 取 `refresh_csrf`，该路径现在在 www 与 passport 两个域都返回 404（不带 cookie 也一样），说明随前端改版失效。服务端会把续期失败报告成「自动续期不可用」，**当前会话照常可用**，只是到期后需要重新扫码。重新扫码只需再跑一次上面的命令。
 把凭证放进环境变量（`BILIBILI_SESSDATA`/`BILIBILI_BILI_JCT`）也可以，适合密钥管理不想走扫码的场景。
 
 ## 4. 配置

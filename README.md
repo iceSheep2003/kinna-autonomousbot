@@ -162,6 +162,7 @@ POST /v1/bilibili/auth/logout
 
 - 会话存在本地库（`bilibili.session`），不进配置文件、不进模型上下文，任何接口都不回传 `SESSDATA`/`bili_jct`。
 - 续期用 B 站的 `refresh_token` + `correspondPath` 流程；**刷新失败保留旧会话**，不会让账号突然下线。
+- 已实测（2026-11-10）：扫码登录与 `cookie/info` 正常，但续期必需的 `/correspond/1/{path}` 已 404，所以**自动续期目前不可用**；会话照常可用，到期后重新扫码即可，接口会如实报告而不是假装刷新成功。
 - 也支持环境变量注入（`BILIBILI_SESSDATA` / `BILIBILI_BILI_JCT`，可选 `BILIBILI_REFRESH_TOKEN`），适合把凭证放在密钥管理里、不经过扫码。
 - 不支持账号密码登录：密码登录要过风控验证码，在服务器上存密码本身也是风险。
 

@@ -89,12 +89,20 @@ export function parseRefreshCsrf(html: string): string | undefined {
  * 扫码登录拿到的是同样的 SESSDATA/bili_jct，外加一个 refresh_token，用完即把密码需求去掉。
  */
 export class BilibiliLogin implements SessionRefresher {
-  /** correspondPath → 页面里的 refresh_csrf；拿不到就是登录态已经不能用。 */
+  /**
+   * correspondPath → 页面里的 refresh_csrf。
+   *
+   * 2026-11-10 实测：`/correspond/1/{path}` 在 www 与 passport 两个域都返回 404（不带 cookie 也一样），
+   * 说明路径已随前端改版失效。这里抛一条说清楚的错，让会话托管者走「等过期后重新扫码」而不是反复重试。
+   */
   private async refreshCsrf(cookie: string, signal: AbortSignal): Promise<string> {
     const path = await correspondPath(Date.now());
-    const html = await (await fetch(`${WWW}/correspond/1/${path}`, { headers: baseHeaders(cookie), signal })).text();
-    const refreshCsrf = parseRefreshCsrf(html);
-    if (!refreshCsrf) throw new Error('没能从 correspond 页面取到 refresh_csrf（可能登录态已失效）');
+    const response = await fetch(`${WWW}/correspond/1/${path}`, { headers: baseHeaders(cookie), signal });
+    if (!response.ok) {
+      throw new Error(`自动续期不可用：/correspond 返回 HTTP ${response.status}（B 站前端改版后该路径已失效）；当前会话仍可用，到期后需要重新扫码`);
+    }
+    const refreshCsrf = parseRefreshCsrf(await response.text());
+    if (!refreshCsrf) throw new Error('correspond 页面里没有 refresh_csrf（可能登录态已失效）');
     return refreshCsrf;
   }
 

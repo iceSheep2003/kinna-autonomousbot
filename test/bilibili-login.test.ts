@@ -115,3 +115,16 @@ test('刷新后合并：新 cookie 优先，缺的字段沿用旧的，绝不拼
   assert.equal(partial.biliJct, 'old-jct');
   assert.equal(partial.refreshToken, 'rt-old');
 });
+
+test('续期路径失效时错误信息说清「会话仍可用、到期重新扫码」，而不是含糊失败', async () => {
+  const { BilibiliLogin } = await import('../src/infrastructure/bilibili/login.js');
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: unknown) => {
+    if (String(url).includes('/correspond/')) return new Response('not found', { status: 404 });
+    return new Response(JSON.stringify({ code: 0, data: {} }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const login = new BilibiliLogin();
+    await assert.rejects(() => login.refresh(baseSession(), AbortSignal.timeout(1000)), /自动续期不可用[\s\S]*重新扫码/);
+  } finally { globalThis.fetch = original; }
+});
