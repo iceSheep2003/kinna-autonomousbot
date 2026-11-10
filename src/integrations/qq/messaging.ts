@@ -77,6 +77,17 @@ export class QqMessaging {
     const chunks = await this.prepare(input, signal);
     return oncePlatform(this.state, operationId, 'message.send', () => this.deliver(input, chunks, operationId, signal));
   }
+  /**
+   * 撤回一条消息。
+   *
+   * 不在这里判断「是不是我发的」：平台有这个能力也更有权威，
+   * 本地另设一套判断只会和平台不一致。撤回结果由调用方如实转达。
+   */
+  async recall(target: Target, messageId: string, signal: AbortSignal): Promise<void> {
+    allowedTarget(this.config, target);
+    await this.gateway.call('delete_msg', { message_id: messageId }, signal);
+  }
+
   /** 发送前的全部校验与引用解析；顺序影响报错优先级，不要随意调整。 */
   private async prepare(input: SendInput, signal: AbortSignal): Promise<string[]> {
     allowedTarget(this.config, input.target);

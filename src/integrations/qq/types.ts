@@ -19,9 +19,27 @@ export const QqConfigSchema = z.object({
 export type QqConfig = z.infer<typeof QqConfigSchema>;
 export interface Segment { type: string; data: Record<string, unknown> }
 export interface QqPart { kind: string; text?: string; targetId?: string; resourceId?: string; faceId?: string }
+export interface QqQuoted {
+  /** 被引用消息的原文（已截断）。 */
+  text: string;
+  /** 被引用消息的发送者。 */
+  nickname?: string;
+  /** 被引用消息里的图片 URL；没有就是空数组。 */
+  images: string[];
+  /** 是否真的取到了内容；false 表示只拿到了 id（权限/已撤回/平台拒绝）。 */
+  resolved: boolean;
+}
+
 export interface QqEvent {
   id: string; kind: string; selfId: string; groupId?: string; userId: string; messageId?: string; time: number; receivedAt: number;
   nickname?: string; text: string; atBot: boolean; atUsers: string[]; replyTo?: string; parts: QqPart[];
+  /**
+   * 被引用那条消息的内容。
+   *
+   * 只有 `replyTo`（一个消息 id）是不够的：模型知道「有人引用了 123」，
+   * 但不知道 123 说了什么，于是接不上话。这里填的是**取回来的原文**。
+   */
+  quoted?: QqQuoted;
   targetId?: string; flag?: string; subType?: string; comment?: string;
   published?: boolean; processed?: boolean; outcome?: unknown;
 }

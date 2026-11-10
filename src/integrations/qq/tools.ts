@@ -13,6 +13,33 @@ interface ToolSpec<T> {
   run: (input: T, context: { operationId: string; signal: AbortSignal }) => Promise<unknown>;
 }
 
+/**
+ * 撤回：说错了、发重了才用。
+ *
+ * 不在这里判断「是不是我发的」——平台有这个能力也更有权威，
+ * 本地另设一套判断只会和平台不一致。撤回失败不抛错：那是常见结果
+ * （超过两分钟、已被撤回、平台限制），抛出去会让模型以为整件事失败了。
+ */
+interface RecallInput { target: { type: 'group' | 'private'; id: string }; messageId: string }
+
+function registerRecall(deps: { tool: (spec: ToolSpec<RecallInput>) => void; config: QqConfig; messaging: QqMessaging }): void {
+  const { tool, config, messaging } = deps;
+  tool({
+    name: 'recall_message',
+    description: '撤回自己刚发的一条消息。说错了、发重了、话说过了头用它。只能撤回自己发的；平台会拒绝撤回别人的。撤回失败要如实告诉对方，不要假装撤回了。',
+    effect: 'write', input: z.object({ target: TargetSchema, messageId: MessageId }),
+    run: async (input, ctx) => {
+      allowedTarget(config, input.target);
+      try {
+        await messaging.recall(input.target, input.messageId, ctx.signal);
+        return { recalled: true, messageId: input.messageId };
+      } catch (error) {
+        return { recalled: false, messageId: input.messageId, reason: String((error as Error).message).slice(0, 200) };
+      }
+    },
+  });
+}
+
 export function registerQqTools(registry: CapabilityRegistrar, deps: QqToolsDependencies): void {
   const { config, gateway, state, messaging } = deps;
   const tool = <T>(spec: ToolSpec<T>) => {
@@ -25,6 +52,7 @@ export function registerQqTools(registry: CapabilityRegistrar, deps: QqToolsDepe
   tool({ name: 'send_message', description: '向白名单群或私聊对象发送消息，可主动发起。@、引用、图片、QQ表情、语音使用结构化字段。长文字自动拆条，返回真实 messageIds。', effect: 'write',
     input: z.object({ target: TargetSchema, text: z.string().max(12000).optional(), atUsers: z.array(QqId).max(10).optional(), replyTo: MessageId.optional(), image: locator.optional(), voice: locator.optional(), face: QqId.optional() }),
     run: (input, ctx) => messaging.send(input, ctx.operationId, ctx.signal) });
+  registerRecall({ tool, config, messaging });
   tool({ name: 'get_message', description: '读取指定会话中的真实消息，核对作用域；返回文字和媒体引用。', effect: 'read', input: z.object({ target: TargetSchema, messageId: MessageId }),
     run: async (input, ctx) => {
       const message = await messaging.message(input.target, input.messageId, ctx.signal);

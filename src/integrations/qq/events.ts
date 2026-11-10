@@ -5,6 +5,8 @@ import type { MediaRef, QqConfig, QqEvent, Segment, Target } from './types.js';
 
 const TEXT_BUDGET = 6000;
 const MEDIA_TYPES = new Set(['image', 'record', 'video', 'mface', 'marketface']);
+/** 媒体在文本里的占位：不占位的话「发来一张图」在 text 上完全看不出来。 */
+const MEDIA_LABEL: Record<string, string> = { image: '[图片]', record: '[语音]', video: '[视频]', mface: '[表情包]', marketface: '[表情包]' };
 const MESSAGE_TYPES = new Set(['group', 'private']);
 const POST_TYPES = new Set(['message', 'notice', 'request']);
 
@@ -128,6 +130,9 @@ function applyMedia(part: Segment, index: number, sink: PartSink): void {
   const kind = part.type === 'record' ? 'audio' : part.type === 'video' ? 'video' : 'image';
   sink.media.push({ id: resourceId, kind, scope: sink.target, eventId: sink.id, file: String(part.data.file ?? '').slice(0, 2000), url: String(part.data.url ?? '').slice(0, 4000) });
   sink.event.parts.push({ kind, resourceId });
+  // 文本里留一个占位符：否则「发来一张图」在 text 上完全看不出来，
+  // 模型只会看到一条空消息，然后答非所问。
+  sink.event.text += MEDIA_LABEL[part.type] ?? '[附件]';
   if (part.type === 'mface' || part.type === 'marketface') sink.event.text += `[表情包：${String(part.data.summary ?? '').slice(0, 40)}]`;
 }
 

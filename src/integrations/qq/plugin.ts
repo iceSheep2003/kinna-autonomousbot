@@ -3,6 +3,7 @@ import type { IncomingEvent } from '../../runtime/types.js';
 import type { QqConfig, QqEvent } from './types.js';
 import type { OneBotPort, QqChannelPort, QqMediaSource, QqPerception, QqSpeech, QqMemeSource, QqState } from './ports.js';
 import { parseQqEvent, savePlatformEvent } from './events.js';
+import { resolveQuote } from './quote.js';
 import { QqMessaging } from './messaging.js';
 import { registerQqTools } from './tools.js';
 import { QqAdministration } from './admin.js';
@@ -63,6 +64,11 @@ export function createQqPlugin(deps: QqPluginOptions): EnvironmentPlugin {
       emit = context.emit;
       await gateway.start(async raw => {
         const parsed = parseQqEvent(raw, config, clock()); if (!parsed) return;
+        // 引用：入站事件里只有被引用消息的 id，必须立刻取回原文，
+        // 否则模型只知道「有人引用了 123」，不知道 123 说了什么。
+        if (parsed.event.replyTo !== undefined && parsed.event.quoted === undefined) {
+          parsed.event = { ...parsed.event, quoted: await resolveQuote(gateway, parsed.event.replyTo) };
+        }
         if (!state.event(parsed.event.id)) savePlatformEvent(state, parsed.event, parsed.media);
         await deliver();
       });

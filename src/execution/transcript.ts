@@ -104,9 +104,24 @@ export function toTranscriptMessage(row: Experience): TranscriptMessage | undefi
 /** 入站：昵称拼进内容，让「谁说的」成为内容的一部分而不是要模型去解结构。 */
 function inbound(data: Record<string, unknown>): Omit<TranscriptMessage, 'seq'> | undefined {
   const text = typeof data.text === 'string' ? data.text : undefined;
-  if (text === undefined || text.trim() === '') return undefined;
+  const quoted = renderQuoted(data.quoted);
+  // 只有引用、没有自己打字（QQ 里直接引用回复）时也要算一条消息：
+  // 否则「他引用了一条消息」在对话记录里会整个消失。
+  if ((text === undefined || text.trim() === '') && quoted === '') return undefined;
   const nickname = typeof data.nickname === 'string' && data.nickname.trim() !== '' ? data.nickname : '某人';
-  return { role: 'user', content: `${nickname}: ${text}` };
+  const body = [quoted, text ?? ''].filter(part => part !== '').join(' ');
+  return { role: 'user', content: `${nickname}: ${body}` };
+}
+
+/** 引用在内容里的样子：紧贴说话人，让「他是在回那句」一眼可见。 */
+function renderQuoted(quoted: unknown): string {
+  if (typeof quoted !== 'object' || quoted === null) return '';
+  const row = quoted as Record<string, unknown>;
+  const resolved = row.resolved !== false;
+  if (!resolved) return '[引用了另一条消息，但内容取不到（可能已撤回）]';
+  const who = typeof row.nickname === 'string' && row.nickname !== '' ? row.nickname : '某人';
+  const text = typeof row.text === 'string' ? row.text : '';
+  return `[引用 ${who}：${text.slice(0, 200)}]`;
 }
 
 /**
