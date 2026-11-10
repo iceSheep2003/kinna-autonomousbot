@@ -36,6 +36,10 @@ export interface AgentOptions {
   dreamCheckIntervalMs?: number; dreamGate?: Partial<DreamGateConfig>;
   dreamOpportunities?: boolean; // 翻出的机会是否交给 self（不传为开启；对照/回滚时关掉）
   todos?: () => import('../self/todos.js').SelfTodo[]; // 自己想做的事，注入 self 上下文
+  /** 人物视图：观察消息里的人 + 渲染认识的几位。 */
+  people?: import('../execution/scene.js').PeopleView;
+  /** 人物仓储（写画像用）；不提供就不写画像。 */
+  peopleStore?: { get(userId: string): import('../memory/person.js').Person | undefined; save(person: import('../memory/person.js').Person): void };
   /** 跨进程互斥由调用方注入；不传则只在进程内互斥。 */
   dreamLock?: DreamLock;
   contextLimits?: Partial<ContextLimits>;
@@ -132,6 +136,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     memory,
     // 旧对话压缩：攒够一批就压成现场状态，否则窗口外的消息直接丢。
     compactor: new ModelSceneCompactor(model),
+    // 人物：消息流过时顺手认人，注入时给认识的几张卡片。
+    ...(options.people ? { people: options.people } : {}),
     requests: {
       continue: (id, now) => { r.jobs.enqueue('scene', `scene:${id}`, { sessionId: id }, now); },
       reflect: (request, now) => inbox.notify('scene.reflection_requested', request, now),
@@ -146,6 +152,7 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const runner = new ExecutionRunner({ repository: r.execution, service: executions, model, capabilities, memory, experience, boundaries, limits });
   const dream = wireDream({
     repositories: r, experience, model, limits, opportunities: options.dreamOpportunities,
+    ...(options.peopleStore ? { people: options.peopleStore } : {}),
     feedback: { completed: report => reportDream(report, { gate, inbox }) },
   });
   worker.register('self', { prepare: (job, now) => self.prepare(job.payload, job.error, now) });

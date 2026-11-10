@@ -118,6 +118,18 @@ export const DreamRoundSchema = z.object({
    * 索引会变成历史补丁的拼接，谁也不清楚里面还有效的有多少。
    * 为什么不给就是不动：省略表示「这次不动索引」，不是「清空」。
    */
+  /**
+   * 人物画像：某个人的事实攒够了，收敛成「他是谁」。
+   *
+   * 为什么在这里而不在写入路径：只有这一轮看到了关于这个人的**全部**事实，
+   * 写路径每次只见到一句。画像是一次收敛，不是累加。
+   */
+  portraits: z.array(z.object({
+    userId: id,
+    portrait: z.string().min(1).max(200),
+    notes: z.array(text.max(120)).max(8).default([]),
+    evidence: z.array(id).max(20).default([]),
+  })).max(10).optional(),
   indexes: z.array(z.object({
     scope: z.string().min(1).max(120),
     entries: z.array(z.object({

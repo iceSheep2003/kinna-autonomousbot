@@ -68,7 +68,7 @@
 两者冲突，就产生了分层：<b>越靠上层越精简、越常驻；越靠下层越具体、越按需。</b>
 </p>
 
-<h3>四层产物，粒度递减、数量递减</h3>
+<h3>五层产物，粒度递减、数量递减</h3>
 
 <svg class="svgbox" viewBox="0 0 1000 250" role="img" aria-label="四层产物">
   <defs><marker id="fa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#b3ada2"/></marker></defs>
@@ -246,8 +246,64 @@
   <li><b>分清谁说的</b>。<code>botContinuity</code> 只记原文里真的说过的——群友的提议不能变成我答应过的事。</li>
 </ul>
 
-<!-- ================= 05 怎么产生 ================= -->
-<h2><span class="n">05</span>这些产物怎么产生</h2>
+
+<!-- ================= 05 人物 ================= -->
+<h2><span class="n">05</span>产物五：人物<span class="tag t-mem">记住人</span></h2>
+<p class="lead">前面四层都是「按事实组织」。但人不是事实的集合，是事实的<b>收敛</b>。</p>
+
+<div class="note">
+<b>为什么需要单独一层。</b>真实数据里一个人有 <b>63 条</b>散落的事实（牢e 就是），
+但没有任何地方把它们拼成「这个人是谁」。每次注入只捞到其中几条，
+于是永远拼不出一个人——bot 会记得「他选了华师保研」，
+却不知道「他是群里做 408 答疑和 bot 开发的那个人」。
+</div>
+
+<pre>{
+  <span class="k">"userId"</span>: <span class="s">"3485823460"</span>,          <span class="c">// QQ 号唯一确定一个人，跨群是同一个人</span>
+  <span class="k">"names"</span>: [<span class="s">"ending_walker03"</span>, <span class="s">"牢e"</span>, <span class="s">"群友3460"</span>],  <span class="c">// 群名片会变，名字只增不减</span>
+
+  <span class="k">"portrait"</span>: <span class="s">"群里的计算机考研/408 答疑与规划者，也做 QQ bot 和 LLM 工具开发"</span>,
+                                    <span class="c">// ← 一句话画像，Dream 写，≤200 字</span>
+  <span class="k">"portraitEvidence"</span>: [<span class="s">"mem-118"</span>, <span class="s">"mem-166"</span>, <span class="s">"mem-179"</span>],  <span class="c">// 凭什么这么说</span>
+  <span class="k">"notes"</span>: [                       <span class="c">// 近况：会过时，每轮被新的替掉</span>
+    <span class="s">"国庆期间学习欲望强，自称「读瘾犯了」"</span>,
+    <span class="s">"正在用其他方式重做 bot；原 bot 失效，只能读群消息不能回复"</span>,
+    <span class="s">"有代码课，每天直播讲并有录播"</span>,
+    <span class="s">"可私聊提供 28 规划咨询和 27 真题复盘"</span>
+  ],
+
+  <span class="k">"groups"</span>: [<span class="s">"330707267"</span>, <span class="s">"866795853"</span>],  <span class="c">// 在哪些群见过他</span>
+  <span class="k">"firstSeenAt"</span>: <span class="n2">1790339103000</span>,
+  <span class="k">"lastSeenAt"</span>: <span class="n2">1791465183000</span>
+}</pre>
+
+<h3>画像和事实的分工</h3>
+<table>
+  <thead><tr><th></th><th>记忆（事实）</th><th>人物（画像）</th></tr></thead>
+  <tbody>
+    <tr><td>粒度</td><td>一条一件，可考证</td><td>一句话 + 几条近况</td></tr>
+    <tr><td>来源</td><td>逐条提炼</td><td>从该人的全部事实<b>收敛</b>而来</td></tr>
+    <tr><td>谁写</td><td>Dream 逐条判断</td><td>Dream 看到全部事实后写</td></tr>
+    <tr><td>更新</td><td>可改、可合并、可归档</td><td><b>整体替换</b>——一堆「补充说明」加起来不是画像，是又一份事实列表</td></tr>
+    <tr><td>注入</td><td>检索命中才给</td><td>最近见过的人给一小份卡片</td></tr>
+  </tbody>
+</table>
+
+<h3>三条约束</h3>
+<ul>
+  <li><b>只写有证据的判断</b>。<code>portraitEvidence</code> 必须指向真实记忆；没有证据的判断不要写——画像会被当成「我一直知道的事」，写错了比空着糟糕得多。</li>
+  <li><b>不写隐私细节</b>。住址、联系方式这些留在记忆里（受 visibility 管），不进画像（画像会被注入到所有相关场景）。</li>
+  <li><b>称呼用真实的，不用系统占位名</b>。真实数据里最近见到的往往是自动生成的「群友3460」，而人实际叫「牢e」——<code>displayName</code> 会跳过这类占位名。</li>
+</ul>
+
+<div class="note">
+<b>实测：</b>用线上真实的 63 条记忆生成画像，输出是
+「群里的计算机考研/408 答疑与规划者，也做 QQ bot 和 LLM 工具开发；问择校、真题复盘或 bot 实现较合适」
++ 6 条近况 + 8 条证据。63 条散落事实收敛成了一句能直接用的人话。
+</div>
+
+<!-- ================= 06 怎么产生 ================= -->
+<h2><span class="n">06</span>这些产物怎么产生</h2>
 
 <svg class="svgbox" viewBox="0 0 1000 190" role="img" aria-label="写入路径">
   <defs><marker id="ba" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#b3ada2"/></marker></defs>
@@ -292,7 +348,7 @@
 </svg>
 
 <!-- ================= 06 怎么使用 ================= -->
-<h2><span class="n">06</span>这些产物怎么被使用</h2>
+<h2><span class="n">07</span>这些产物怎么被使用</h2>
 
 <pre><span class="c">// 一次注入，模型实际收到的三块内容（按顺序）</span>
 
@@ -308,7 +364,13 @@
    general（通用层 ~40%）  2 条
    scoped（当前场景 ~60%） 3 条
 
-③ 场景现场（只有群聊场景有）
+③ 我认识的这些人
+   ## 我认识的这些人
+   - 牢e：群里的 408 答疑与规划者，也做 bot 开发
+     · 正在重做 bot；原 bot 失效
+     （依据: mem-118,mem-166）
+
+④ 场景现场（只有群聊场景有）
    这段对话之前聊到（不是这一轮的原文，是背景）
    - 还没接住：「我嫌弃她有点笨」指谁没说明
 
@@ -328,7 +390,7 @@ memory.search("华师 保研")                → 主动回想，连归档的一
 </table>
 
 <!-- ================= 07 Dream ================= -->
-<h2><span class="n">07</span>Dream：四个重构动作</h2>
+<h2><span class="n">08</span>Dream：重构动作</h2>
 <p class="lead">前面所有产物都可能在 Dream 这里被改写。这是整套机制唯一「重构」的地方。</p>
 
 <svg class="svgbox" viewBox="0 0 1000 300" role="img" aria-label="Dream 四项">
@@ -377,7 +439,7 @@ memory.search("华师 保研")                → 主动回想，连归档的一
 </svg>
 
 <!-- ================= 08 设计取舍 ================= -->
-<h2><span class="n">08</span>五个关键取舍</h2>
+<h2><span class="n">09</span>关键取舍</h2>
 <table>
   <thead><tr><th>取舍</th><th>选了</th><th>为什么，代价是什么</th></tr></thead>
   <tbody>
@@ -396,6 +458,10 @@ memory.search("华师 保研")                → 主动回想，连归档的一
     <tr>
       <td>模型判断 vs 代码规则</td><td>判断给模型，语义给代码</td>
       <td>代码规则可预测但僵硬（字面相似度实测完全不管用）；模型灵活但会漂。所以把「不能错的」（证据、上限）留在代码</td>
+    </tr>
+    <tr>
+      <td>事实 vs 画像</td><td>两者都要，单独立一层</td>
+      <td>只有事实则拼不出人（63 条散落）；只有画像则没法考证。代价是多维护一层收敛逻辑</td>
     </tr>
     <tr>
       <td>全量 vs 增量索引</td><td>全量替换</td>

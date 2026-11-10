@@ -21,7 +21,7 @@ export interface DreamWiring {
   opportunities?: boolean;
 }
 
-export function wireDream(input: DreamWiring): DreamService {
+export function wireDream(input: DreamWiring & { people?: { get(userId: string): import('../memory/person.js').Person | undefined; save(person: import('../memory/person.js').Person): void } }): DreamService {
   return new DreamService({
     repository: input.repositories.memory,
     experience: input.experience,
@@ -29,6 +29,7 @@ export function wireDream(input: DreamWiring): DreamService {
     limits: input.limits,
     opportunities: input.opportunities !== false,
     feedback: input.feedback,
+    ...(input.people ? { people: input.people } : {}),
   });
 }
 

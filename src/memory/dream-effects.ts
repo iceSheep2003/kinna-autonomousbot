@@ -1,6 +1,7 @@
 import type { ExperienceLog, MemoryRepository } from './ports.js';
 import { buildPromotion, refusePromotion } from './promote.js';
 import { fitIndex, pruneDangling, type IndexEntry } from './index-layer.js';
+import { PORTRAIT_MAX, PersonSchema, type Person } from './person.js';
 
 /**
  * Dream 提交之后的两个副作用：提升到通用层、写索引。
@@ -54,4 +55,42 @@ export function writeMemoryIndexes(deps: EffectDeps, indexes: readonly { scope: 
     if (dropped > 0) deps.experience.record('dream', 'memory.index.pruned', { scope, dropped }, now);
     deps.experience.record('dream', 'memory.index.written', { scope, entries: index.entries.length }, now);
   }
+}
+
+/**
+ * 落库人物画像。
+ *
+ * 和记忆不同：画像**整体替换**，不做增量拼接。一堆「补充说明」加起来不是画像，
+ * 是又一份事实列表。证据 id 里指向不存在的就丢掉，别让画像挂在不存在的记忆上。
+ */
+export function writePortraits(
+  deps: EffectDeps & { people?: { get(userId: string): Person | undefined; save(person: Person): void } },
+  portraits: readonly { userId: string; portrait: string; notes: readonly string[]; evidence: readonly string[] }[] | undefined,
+  now: number,
+): void {
+  if (portraits === undefined || !deps.people) return;
+  for (const item of portraits) {
+    const existing = deps.people.get(item.userId);
+    if (!existing) {
+      // 没见过这个人就不凭空建：画像必须有已观察到的人物实体作为落点。
+      deps.experience.record('dream', 'portrait.skipped', { userId: item.userId, reason: '没有这个人的观察记录' }, now);
+      continue;
+    }
+    const next = PersonSchema.parse({
+      ...existing,
+      portrait: item.portrait.slice(0, PORTRAIT_MAX),
+      notes: item.notes.slice(0, 8),
+      portraitEvidence: item.evidence.filter(id => deps.repository.get(id) !== undefined).slice(0, 20),
+    });
+    deps.people.save(next);
+    deps.experience.record('dream', 'portrait.written', { userId: item.userId, notes: next.notes.length }, now);
+  }
+}
+
+
+/** 画像按 userId 合并：后一遍看到的更全，所以覆盖前一遍。 */
+export function mergePortraits(prior: readonly { userId: string; portrait: string; notes: readonly string[]; evidence: readonly string[] }[] | undefined, next: readonly { userId: string; portrait: string; notes: readonly string[]; evidence: readonly string[] }[]): { userId: string; portrait: string; notes: string[]; evidence: string[] }[] {
+  const merged = new Map((prior ?? []).map(item => [item.userId, { ...item, notes: [...item.notes], evidence: [...item.evidence] }]));
+  for (const item of next) merged.set(item.userId, { userId: item.userId, portrait: item.portrait, notes: [...item.notes], evidence: [...item.evidence] });
+  return [...merged.values()];
 }

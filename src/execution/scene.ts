@@ -6,6 +6,12 @@ import { UncertainOperation } from '../capabilities/ports.js';
 import { SOCIAL_LINES, personaText, type Personality } from '../shared/persona.js';
 import { COMPACT_EVERY, renderSceneState, shouldCompact, type SceneState } from './scene-compaction.js';
 import type { SceneCompactor } from './scene-compactor.js';
+
+/** 场景需要的人物能力：观察与列出。 */
+export interface PeopleView {
+  observe(data: unknown, now: number): void;
+  roster?(limit: number): string;
+}
 import type { SubjectView } from '../subject/ports.js';
 import type { ExperienceLog, MemoryView } from '../memory/ports.js';
 import type { SceneRequests, SceneSessionRepository } from './ports.js';
@@ -61,6 +67,8 @@ export interface SceneDependencies {
   memory?: MemoryView;
   /** 旧对话压缩器；不配置就不压缩（旧消息仍然只是被窗口挤出去）。 */
   compactor?: SceneCompactor;
+  /** 人物：观察消息里的人，注入时给认识的几张卡片。 */
+  people?: PeopleView;
 }
 
 type ToolDecision = Extract<SceneDecision, { type: 'tool' }>;
@@ -83,11 +91,12 @@ export class SceneSessions {
   private readonly personality?: Personality;
   private readonly memory?: MemoryView;
   private readonly compactor?: SceneCompactor;
+  private readonly people?: PeopleView;
   constructor(deps: SceneDependencies) {
     this.repository = deps.repository; this.experience = deps.experience; this.subject = deps.subject;
     this.model = deps.model; this.capabilities = deps.capabilities; this.requests = deps.requests;
     this.boundaries = deps.boundaries; this.limits = deps.limits; this.personality = deps.personality;
-    this.memory = deps.memory; this.compactor = deps.compactor;
+    this.memory = deps.memory; this.compactor = deps.compactor; this.people = deps.people;
   }
   receive(scene: SceneDescriptor, kind: string, data: unknown, now: number): void {
     const old = this.repository.get(scene.id);
@@ -101,6 +110,8 @@ export class SceneSessions {
     const source = `session:${id}`;
     // 攒够一批旧消息就先压成现场状态；压不动不影响本轮（压缩失败只记日志）。
     const state = await this.maybeCompact(raw, source, now);
+    // 顺手把消息里的人记下来：这是观察，不是判断，不额外调模型。
+    for (const row of this.experience.read(state.cursor, this.limits.observations, source)) this.people?.observe(row.data, now);
     const observations = this.experience.read(state.cursor, this.limits.observations, source);
     if (!observations.length) return () => {};
     // 本地额度耗尽先停下来，不把普通执行问题自动升级成主体反思。
@@ -157,13 +168,8 @@ export class SceneSessions {
   private context(frame: LoadFrame) {
     const subject = this.subject.read();
     const query = JSON.stringify(frame.observations).slice(0, 3000);
-    // 超出窗口的旧对话已经压成现场状态：带上它，才接得上「刚才聊到哪」。
-    const prior = renderSceneState(frame.state.sceneState);
-    // 索引：owner 那份 + 这个场景那份。细节仍然留给 memory.expand。
-    const indexText = this.memory?.indexText?.(scopeOf(frame.state)) ?? '';
     return { now: frame.now, session: frame.state, subject: { identity: subject.identity, direction: subject.direction, affect: subject.affect },
-      ...(prior === '' ? {} : { earlier: prior }),
-      ...(indexText === '' ? {} : { memoryIndex: indexText }),
+      ...this.optionalContext(frame),
       // 场景记忆：owner 层（所有场合适用）+ 这个群/这个环境的。scope 由环境与 id 决定。
       ...(this.memory ? { memories: this.memory.context?.({
         query, limit: this.limits.memories, now: frame.now,
@@ -172,6 +178,21 @@ export class SceneSessions {
       observations: frame.observations, recent: this.repository.recentDecisions(frame.id, this.limits.recentTurns),
       capabilities: this.capabilities.catalog(frame.allowed) };
   }
+  /**
+   * 可选的三块内容：现场状态、索引、认识的人。
+   * 空的一律不塞进上下文——空字符串占预算，还会让模型以为「这里本来就该空」。
+   */
+  private optionalContext(frame: LoadFrame): Record<string, string> {
+    // 超出窗口的旧对话已经压成现场状态：带上它，才接得上「刚才聊到哪」。
+    const prior = renderSceneState(frame.state.sceneState);
+    // 索引：owner 那份 + 这个场景那份。细节仍然留给 memory.expand。
+    const indexText = this.memory?.indexText?.(scopeOf(frame.state)) ?? '';
+    // 认识的人：给最近见过的几位，附画像与近况。这是「记得人」真正落地的地方。
+    const peopleText = this.people?.roster?.(5) ?? '';
+    const blocks: Array<[string, string]> = [['earlier', prior], ['memoryIndex', indexText], ['people', peopleText]];
+    return Object.fromEntries(blocks.filter(([, text]) => text !== ''));
+  }
+
   private async toolCommit(frame: StepFrame, action: ToolDecision): Promise<Commit> {
     let result: unknown; let uncertain = false;
     try {

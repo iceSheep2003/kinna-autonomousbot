@@ -4,7 +4,7 @@ import type { ContextLimits } from '../shared/limits.js';
 import type { DreamFeedback, ExperienceLog, MemoryRepository } from './ports.js';
 import { DreamRoundSchema, type DreamLoop, type DreamRound, type DreamVersion, type Memory, type Opportunity } from './types.js';
 import { lived } from './lived.js';
-import { promoteMemories, writeMemoryIndexes, type DreamPromotion } from './dream-effects.js';
+import { mergePortraits, promoteMemories, writeMemoryIndexes, writePortraits, type DreamPromotion } from './dream-effects.js';
 import type { IndexEntry } from './index-layer.js';
 import { screenOpportunities } from './opportunity.js';
 import { checkMemory, guardScope, judge, loopOf, snapshotOf, type Workbook } from './replay-rules.js';
@@ -16,6 +16,8 @@ export { DREAM_INSTRUCTIONS, DREAM_REPLAY_NOTES };
 export type DreamMemory = Omit<Memory, 'revision'>;
 
 export interface DreamDependencies {
+  /** 人物仓储；不提供时不写画像。 */
+  people?: { get(userId: string): import('./person.js').Person | undefined; save(person: import('./person.js').Person): void };
   repository: MemoryRepository;
   experience: ExperienceLog;
   model: LanguageModel;
@@ -52,6 +54,8 @@ export const DREAM_POLICY = {
 } as const;
 
 /** 一次 Dream 提交需要的全部信息。 */
+export type DreamPortrait = { userId: string; portrait: string; notes: string[]; evidence: string[] };
+
 interface DreamResult {
   id: string; cursor: number; cutoff: number; revisions: Map<string, number>; now: number;
   /** 最终工作副本与库之间的差异：提交时一次原子落库。 */
@@ -65,6 +69,8 @@ interface DreamResult {
   promotions: DreamPromotion[];
   /** 模型给出的记忆索引（按作用域）；undefined 表示这次不动索引。 */
   indexes?: { scope: string; entries: IndexEntry[] }[];
+  /** 模型写的人物画像；undefined 表示这次不动。 */
+  portraits?: DreamPortrait[];
 }
 
 /**
@@ -78,6 +84,8 @@ interface DreamResult {
 export class DreamService {
   private readonly repository: MemoryRepository;
   private readonly experience: ExperienceLog;
+  /** 人物仓储；不提供就不写画像（老实现不受影响）。 */
+  private readonly people?: { get(userId: string): import('./person.js').Person | undefined; save(person: import('./person.js').Person): void };
   private readonly model: LanguageModel;
   private readonly feedback: DreamFeedback;
   private readonly limits: ContextLimits;
@@ -90,6 +98,7 @@ export class DreamService {
     this.feedback = deps.feedback; this.limits = deps.limits;
     this.policy = { ...DREAM_POLICY, ...(deps.policy ?? {}) } as typeof DREAM_POLICY;
     this.collectOpportunities = deps.opportunities !== false;
+    this.people = deps.people;
   }
   async prepare(id: string, error: string | undefined, now: number): Promise<Commit> {
     const cursor = this.repository.cursor();
@@ -111,6 +120,7 @@ export class DreamService {
       id, cursor, cutoff, revisions, ops: loop.ops, rounds: loop.rounds, converged: loop.converged, now,
       notify: true, summary: loop.summary, proposals: loop.proposals, failedApproaches: loop.failedApproaches,
       promotions: loop.promotions, ...(loop.indexes ? { indexes: loop.indexes } : {}),
+      ...(loop.portraits ? { portraits: loop.portraits } : {}),
       opportunities: loop.opportunities,
     });
   }
@@ -172,15 +182,12 @@ export class DreamService {
 
   /** 收下这一遍给出的建议与机会：后一遍的说法覆盖前一遍，机会与提升按 id 合并。 */
   private collect(raw: DreamRound, outcome: ReplayOutcome): void {
+    // 说明、建议这类是「整批覆盖」：后一遍看到的内容更全，前面那版自然被取代。
     if (raw.proposals?.length) outcome.proposals = [...raw.proposals];
     if (raw.failedApproaches?.length) outcome.failedApproaches = [...raw.failedApproaches];
-    // 索引是「最后一遍为准」：后面的回放看到的内容更全，前面那版自然被取代。
     if (raw.indexes !== undefined) outcome.indexes = raw.indexes;
-    if (raw.promotions?.length) {
-      // 多遍取并集：同一 id 以后一遍的理由为准（它看到了更多上下文）。
-      outcome.promotions = mergeById(outcome.promotions, raw.promotions.map(item => ({ id: item.id, why: item.why })));
-    }
-    if (raw.opportunities?.length) outcome.opportunities = mergeById(outcome.opportunities, raw.opportunities);
+    // 下面三项是「按 id 合并」：同一对象多遍都提到时，以后一遍为准。
+    collectMerged(raw, outcome);
   }
 
   /** 本遍新写的记忆放进工作副本；第 2 遍起不允许换个名字重写已有的记忆。 */
@@ -272,9 +279,10 @@ export class DreamService {
       else this.retire(op.id, 'superseded', revisions);
     }
     // 副作用交给独立模块：回放决定「记什么」，这里决定「怎么组织」，后者失败不影响前者。
-    const effects = { repository: this.repository, experience: this.experience };
+    const effects = { repository: this.repository, experience: this.experience, ...(this.people ? { people: this.people } : {}) };
     promoteMemories(effects, result.promotions, now);
     writeMemoryIndexes(effects, result.indexes, now);
+    writePortraits(effects, result.portraits, now);
     const version: DreamVersion = {
       id, cursor, cutoff, status: 'published', at: now, rounds: result.rounds, converged: result.converged,
       candidate: {
@@ -334,7 +342,16 @@ type ReplayOutcome = {
   promotions: DreamPromotion[];
   /** 模型给出的记忆索引（按作用域）；最后一遍为准（它看到的内容最全）。 */
   indexes?: { scope: string; entries: IndexEntry[] }[];
+  /** 模型写的人物画像。 */
+  portraits?: DreamPortrait[];
 };
+
+/** 需要按 id 合并的三类：画像、提升、机会。多遍都提到时以后一遍为准。 */
+function collectMerged(raw: DreamRound, outcome: ReplayOutcome): void {
+  if (raw.portraits?.length) outcome.portraits = mergePortraits(outcome.portraits, raw.portraits);
+  if (raw.promotions?.length) outcome.promotions = mergeById(outcome.promotions, raw.promotions.map(item => ({ id: item.id, why: item.why })));
+  if (raw.opportunities?.length) outcome.opportunities = mergeById(outcome.opportunities, raw.opportunities);
+}
 
 /** 按 id 合并两批：后来的覆盖前面的，顺序按首次出现。 */
 function mergeById<T extends { id: string }>(prior: readonly T[], next: readonly T[]): T[] {

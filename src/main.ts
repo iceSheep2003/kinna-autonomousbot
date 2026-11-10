@@ -24,6 +24,9 @@ import { SessionHost } from './app/bilibili-session.js';
 import { registerSelfTodoTools } from './self/todo-tools.js';
 import { SqliteSelfTodoStore } from './infrastructure/sqlite/self-todos.js';
 import { MemoryForgetter } from './memory/forget-service.js';
+import { SqlitePeopleRepository } from './infrastructure/sqlite/people.js';
+import { PeopleRoster } from './memory/person-observer.js';
+import { renderPerson } from './memory/person.js';
 import { registerWebFetch } from './integrations/web-fetch.js';
 import { hotShareFromEnv } from './features/hot-share/config.js';
 import { deepSeekSearch } from './features/hot-share/search.js';
@@ -87,10 +90,15 @@ if (bilibiliConfig.enabled) {
 }
 const model = new OpenAICompatibleModel({ baseUrl: process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1', apiKey: LLM_API_KEY, model: LLM_MODEL, profiles: profilesFromEnv(process.env) });
 const selfTodos = new SqliteSelfTodoStore(store);
+// 人物：消息流过时认人，Dream 写画像，场景注入时给几张卡片。
+const peopleStore = new SqlitePeopleRepository(store);
+const people = new PeopleRoster(peopleStore, renderPerson);
 const agent = composeAgent(repositories, model, capabilities, { ...config,
   dreamLock: createDreamLock(resolve(process.env.DREAM_LOCK_PATH ?? 'data/dream.lock')),
   // 醒来能看到自己想做的几件事（只读 open 的，最多 5 条）。
-  todos: () => openTodos(selfTodos.list(TODO_CAP), 5) });
+  todos: () => openTodos(selfTodos.list(TODO_CAP), 5),
+  people,
+  peopleStore });
 const runtime = agent.runtime;
 registerMemory(capabilities, agent.memory, agent.experience);
 registerNotes(capabilities, agent.experience);
