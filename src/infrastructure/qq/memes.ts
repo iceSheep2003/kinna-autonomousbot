@@ -24,12 +24,35 @@ export class LocalQqMemes implements QqMemeSource {
     return new LocalQqMemes(root, entries);
   }
   tags() { return [...this.entries.keys()].sort(); }
-  async pick(tag: string): Promise<string> {
-    const files = this.entries.get(tag); if (!files?.length) throw new Error('Unknown meme tag');
-    const file = await realpath(files[randomInt(files.length)]!); const rel = relative(this.root, file);
-    if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('Meme path escaped catalog root');
-    const info = await stat(file); if (info.size > 4 * 1024 * 1024) throw new Error('Meme exceeds byte budget');
-    const bytes = await readFile(file); if (!bytes.length || bytes.length > 4 * 1024 * 1024) throw new Error('Meme exceeds byte budget');
-    return `base64://${bytes.toString('base64')}`;
+  /**
+   * 挑一张表情包，尽量避开最近发过的。
+   *
+   * 纯随机的问题：tag 下只有三五张时，连着发两次就有一半概率撞同一张。
+   * 群里连续刷同一张图很出戏——实际表现就是「总爱发那几个重复的」。
+   *
+   * 做法：先排除 avoid，剩下的随机；全被排除（tag 太小）就退回全量随机，
+   * 不因为「都发过」而报错。返回 id 让调用方能记住这次发了哪张。
+   */
+  async pick(tag: string, options: { avoid?: readonly string[] } = {}): Promise<{ image: string; id: string }> {
+    const files = this.entries.get(tag);
+    if (!files?.length) throw new Error('Unknown meme tag');
+    const file = await realpath(this.choose(files, options.avoid ?? []));
+    if (relative(this.root, file).startsWith('..') || isAbsolute(relative(this.root, file))) throw new Error('Meme path escaped catalog root');
+    const bytes = await readFile(file);
+    if (!bytes.length || bytes.length > 4 * 1024 * 1024) throw new Error('Meme exceeds byte budget');
+    return { image: `base64://${bytes.toString('base64')}`, id: this.memeId(file) };
+  }
+
+  /** 避开最近发过的；全被排除就退回全量——不因为「都发过」而发不出去。 */
+  private choose(files: readonly string[], avoid: readonly string[]): string {
+    const seen = new Set(avoid);
+    const fresh = files.filter(file => !seen.has(this.memeId(file)));
+    const pool = fresh.length > 0 ? fresh : files;
+    return pool[randomInt(pool.length)]!;
+  }
+
+  /** 表情包的稳定标识：目录内相对路径。用来记「最近发过哪几张」。 */
+  private memeId(file: string): string {
+    return relative(this.root, file);
   }
 }

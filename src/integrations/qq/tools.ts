@@ -4,6 +4,7 @@ import type { CapabilityRegistrar } from '../../capabilities/ports.js';
 import type { OneBotPort, QqMediaSource, QqPerception, QqSpeech, QqMemeSource, QqState } from './ports.js';
 import { QqId, MessageId, TargetSchema, type QqConfig } from './types.js';
 import { allowedTarget, segments } from './events.js';
+import { COMMON_FACES, isValidFace } from './faces.js';
 import { object, onebotId, QqMessaging } from './messaging.js';
 export interface QqToolsDependencies { config: QqConfig; gateway: OneBotPort; state: QqState; messaging: QqMessaging; media?: QqMediaSource; perception?: QqPerception; speech?: QqSpeech; memes?: QqMemeSource }
 
@@ -47,10 +48,15 @@ export function registerQqTools(registry: CapabilityRegistrar, deps: QqToolsDepe
       authorize: (input, scope) => authorizeQqScene(input, scope, state), run: (raw, context) => spec.run(spec.input.parse(raw), context) });
   };
   const locator = z.string().min(1).max(4000).refine(v => { try { const u = new URL(v); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; } }, 'Use HTTPS media URL; local files require configured resources');
-  tool({ name: 'environment', description: '了解自己当前能接触的QQ账号、会话白名单和可选媒体能力。探索或主动联系前可查询。', effect: 'read', input: z.object({}),
-    run: async () => ({ selfId: config.selfId, allowedGroups: config.allowedGroups, allowedPrivateUsers: config.privateEnabled ? config.allowedPrivateUsers : [], voice: !!deps.speech, perception: !!deps.perception, memeTags: deps.memes?.tags() ?? [] }) });
-  tool({ name: 'send_message', description: '向白名单群或私聊对象发送消息，可主动发起。@、引用、图片、QQ表情、语音使用结构化字段。长文字自动拆条，返回真实 messageIds。', effect: 'write',
-    input: z.object({ target: TargetSchema, text: z.string().max(12000).optional(), atUsers: z.array(QqId).max(10).optional(), replyTo: MessageId.optional(), image: locator.optional(), voice: locator.optional(), face: QqId.optional() }),
+  // 表情必须在这里列出来：只告诉模型「可以发表情」等于没说，它不知道有哪些 id
+  // 可用就不会发——线上官方表情用得少就是这么来的。
+  tool({ name: 'environment', description: '了解自己当前能接触的QQ账号、会话白名单、可发的QQ表情和表情包标签。想用表情或表情包之前先查这个。', effect: 'read', input: z.object({}),
+    run: async () => ({ selfId: config.selfId, allowedGroups: config.allowedGroups, allowedPrivateUsers: config.privateEnabled ? config.allowedPrivateUsers : [], voice: !!deps.speech, perception: !!deps.perception, faces: COMMON_FACES, memeTags: deps.memes?.tags() ?? [] }) });
+  tool({ name: 'send_message', description: '向白名单群或私聊对象发送消息，可主动发起。@、引用、图片、QQ表情、语音使用结构化字段。'
+      + '**QQ表情**（face）填表情 id，常用列表用 qq.environment 查；表情在群聊里能代替一句话，别只发文字。'
+      + '长文字自动拆条，返回真实 messageIds。', effect: 'write',
+    input: z.object({ target: TargetSchema, text: z.string().max(12000).optional(), atUsers: z.array(QqId).max(10).optional(), replyTo: MessageId.optional(), image: locator.optional(), voice: locator.optional(),
+      face: QqId.refine(id => isValidFace(id), '这个表情 id 不存在；常用列表用 qq.environment 查').optional() }),
     run: (input, ctx) => messaging.send(input, ctx.operationId, ctx.signal) });
   registerRecall({ tool, config, messaging });
   tool({ name: 'get_message', description: '读取指定会话中的真实消息，核对作用域；返回文字和媒体引用。', effect: 'read', input: z.object({ target: TargetSchema, messageId: MessageId }),
@@ -99,8 +105,11 @@ export function registerQqTools(registry: CapabilityRegistrar, deps: QqToolsDepe
     run: async input => state.operation(input.operationId) ?? { status: 'unknown' } });
   if (deps.memes) tool({ name: 'send_meme', description: '从已配置的本地表情包目录选择标签并发送。可用标签通过 qq.environment 查询。', effect: 'write', input: z.object({ target: TargetSchema, tag: z.string().min(1).max(100), text: z.string().max(1000).optional() }),
     run: async (input, ctx) => {
-      allowedTarget(config, input.target); const image = await deps.memes!.pick(input.tag);
-      return messaging.send({ target: input.target, text: input.text, image }, ctx.operationId, ctx.signal);
+      allowedTarget(config, input.target);
+      // 最近发过的记在 state 里：纯随机在只有几张的 tag 下必然短期重复。
+      const picked = await deps.memes!.pick(input.tag, { avoid: state.recentMemes?.(input.tag) ?? [] });
+      state.rememberMeme?.(input.tag, picked.id);
+      return messaging.send({ target: input.target, text: input.text, image: picked.image }, ctx.operationId, ctx.signal);
     } });
   if (deps.media && deps.perception) tool({ name: 'inspect_media', description: '读取QQ事件里的图片或语音资源并理解/转写。资源必须来自已经接收的QQ事件，不能假装看过。', effect: 'read', input: z.object({ resourceId: z.string().max(200), question: z.string().max(1000).default('请描述内容') }),
     run: async (input, ctx) => {

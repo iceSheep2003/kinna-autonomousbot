@@ -13,6 +13,12 @@ export class SqliteQqState implements QqState {
   /** 图片识别结果：同一张图只分析一次。 */
   imageSummary(id: string) { return this.db.get<string>('qq.image.summary', id); }
   saveImageSummary(id: string, summary: string) { this.db.put('qq.image.summary', id, summary.slice(0, 500)); }
+  /** 每个标签记最近 6 张：够避免短期重复，又不至于把整个 tag 排除光。 */
+  recentMemes(tag: string) { return this.db.get<string[]>('qq.meme.recent', tag) ?? []; }
+  rememberMeme(tag: string, id: string) {
+    const next = [id, ...(this.recentMemes(tag) ?? []).filter(item => item !== id)].slice(0, 6);
+    this.db.put('qq.meme.recent', tag, next);
+  }
   knownMessage(id: string) { return this.db.get<{ target: Target }>('qq.messages', id); }
   rememberMessage(id: string, target: Target) { this.db.put('qq.messages', id, { target }); }
   proposal(groupId: string) { return this.db.get<TitleProposal>('qq.proposals', groupId); }

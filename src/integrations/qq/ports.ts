@@ -12,6 +12,9 @@ export interface QqState {
   /** 图片识别结果缓存：同一张图不重复分析。没有实现时每次都重新读。 */
   imageSummary?(id: string): string | undefined;
   saveImageSummary?(id: string, summary: string): void;
+  /** 某个标签下最近发过的表情包（避免连着刷同一张）。 */
+  recentMemes?(tag: string): string[];
+  rememberMeme?(tag: string, id: string): void;
   knownMessage(id: string): { target: { type: 'group' | 'private'; id: string } } | undefined;
   rememberMessage(id: string, target: { type: 'group' | 'private'; id: string }): void;
   proposal(groupId: string): TitleProposal | undefined; saveProposal(proposal: TitleProposal): void;
@@ -30,7 +33,16 @@ export interface QqPerception {
   capabilities?(): { image: boolean; audio: boolean };
 }
 export interface QqSpeech { synthesize(text: string, style: string, signal: AbortSignal): Promise<string> }
-export interface QqMemeSource { tags(): string[]; pick(tag: string): Promise<string> }
+export interface QqMemeSource {
+  tags(): string[];
+  /**
+   * 挑一张表情包。
+   *
+   * `avoid` 是最近发过的文件标识：纯随机在只有三五张的 tag 下必然短期重复，
+   * 群里连续刷同一张图很出戏。实现应该优先挑不在 avoid 里的。
+   */
+  pick(tag: string, options?: { avoid?: readonly string[] }): Promise<{ image: string; id: string }>;
+}
 /** 一次频道 API 调用；query 只允许字符串键值。 */
 export interface ChannelRequest {
   method: string; path: string; body?: unknown; signal?: AbortSignal; query?: Record<string, string>;
