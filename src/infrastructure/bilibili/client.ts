@@ -1,5 +1,5 @@
 import type { Credentials } from '../../integrations/bilibili/types.js';
-import type { BilibiliRequest, BilibiliTransport, MediaClip } from '../../integrations/bilibili/ports.js';
+import type { BilibiliRequest, BilibiliTransport } from '../../integrations/bilibili/ports.js';
 
 const API = 'https://api.bilibili.com';
 const VC = 'https://api.vc.bilibili.com';
@@ -42,7 +42,14 @@ function headers(credentials: Credentials | undefined, isWrite: boolean): Record
  * - 写接口必须带 csrf，值就是 bili_jct，由本层自动附上，调用方永远看不到 cookie。
  */
 export class BilibiliHttp implements BilibiliTransport {
-  constructor(private readonly credentials: Credentials | undefined, private readonly ffmpegBin = 'ffmpeg') {}
+  /** 会话可变：扫码登录或刷新后直接换掉，不需要重建传输层。 */
+  private credentials: Credentials | undefined;
+  constructor(credentials: Credentials | undefined, private readonly onInvalid?: (reason: string) => void) {
+    this.credentials = credentials;
+  }
+
+  /** 登录/刷新后调用；cookie 只在传输层出现。 */
+  setCredentials(credentials: Credentials | undefined): void { this.credentials = credentials; }
 
   async request<T>(request: BilibiliRequest): Promise<T> {
     const prepared = this.prepare(request);
@@ -52,7 +59,10 @@ export class BilibiliHttp implements BilibiliTransport {
       ...(prepared.body === undefined ? {} : { body: prepared.body }),
     });
     if (!response.ok) throw new BilibiliError(`B 站 HTTP ${response.status}`, response.status);
-    return decode<T>(await response.json() as { code?: number; message?: string; data?: unknown });
+    const body = await response.json() as { code?: number; message?: string; data?: unknown };
+    // -101 是「账号未登录」：cookie 已失效，交给会话托管者提示重新登录，不在这里重试。
+    if (body.code === -101) this.onInvalid?.('SESSDATA 失效（账号未登录）');
+    return decode<T>(body);
   }
 
   /** 弹幕等非 JSON 接口：同样带浏览器头与登录态，但返回原文。 */
@@ -79,36 +89,4 @@ export class BilibiliHttp implements BilibiliTransport {
     const body = request.json ? JSON.stringify(request.json) : form.size > 0 ? form.toString() : undefined;
     return { url, json: Boolean(request.json), ...(body === undefined ? {} : { body }) };
   }
-
-  /** 用 ffmpeg 截取一小段并抽一帧；视频流 URL 两分钟有效，所以必须立即拉。 */
-  async clip(request: { url: string; startSeconds: number; endSeconds: number; signal: AbortSignal; dir?: string; name?: string }): Promise<MediaClip> {
-    const { spawn } = await import('node:child_process');
-    const { mkdtempSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const { join } = await import('node:path');
-    const dir = request.dir ?? mkdtempSync(join(tmpdir(), 'bili-frame-'));
-    const file = join(dir, request.name ?? 'frame.jpg');
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(this.ffmpegBin, [
-        '-hide_banner', '-loglevel', 'error', '-y', '-ss', String(Math.max(0, request.startSeconds)),
-        '-i', request.url, '-t', String(Math.max(0.1, request.endSeconds - request.startSeconds)),
-        '-frames:v', '1', '-vf', 'scale=720:-2', file,
-      ], { stdio: ['ignore', 'ignore', 'pipe'] });
-      let stderr = '';
-      child.stderr?.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-2000); });
-      request.signal.addEventListener('abort', () => child.kill('SIGKILL'), { once: true });
-      child.once('error', error => reject(new BilibiliError(`无法启动 ffmpeg：${error.message}`, -1)));
-      child.once('close', code => code === 0 ? resolve() : reject(new BilibiliError(`抽帧失败（ffmpeg ${code}）：${stderr.slice(0, 300)}`, -1)));
-    });
-    // 指定了共享目录时只删本帧，目录由调用方统一清理。
-    return { path: file, cleanup: () => { try { rmSync(request.dir ? file : dir, { recursive: !request.dir, force: true }); } catch { /* 临时文件已不在 */ } } };
-  }
-}
-
-/** 从部署环境读登录态；缺一个就当未登录，而不是只配一半。 */
-export function credentialsFromEnv(env: Record<string, string | undefined>): Credentials | undefined {
-  const sessdata = env.BILIBILI_SESSDATA?.trim();
-  const biliJct = env.BILIBILI_BILI_JCT?.trim();
-  if (!sessdata || !biliJct) return undefined;
-  return { sessdata, biliJct };
 }

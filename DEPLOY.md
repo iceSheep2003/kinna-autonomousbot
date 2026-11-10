@@ -21,7 +21,18 @@ BILIBILI_CHROME_PATH=/usr/bin/google-chrome
 
 没装浏览器不会影响其他功能：`bilibili.video` 会返回一条明确的错误，读评论、出草稿照常。
 
-## 3. 配置
+## 3. 登录（扫码，不存密码）
+
+```sh
+KEY=$(curl -s -X POST -H "Authorization: Bearer $API_TOKEN" $BASE/v1/bilibili/auth/qr | jq -r .qrcodeKey)
+# 用返回的 url 生成二维码，手机 B 站扫码
+curl -s -H "Authorization: Bearer $API_TOKEN" $BASE/v1/bilibili/auth/qr/$KEY   # 直到 status=ok
+```
+
+会话落在同一个库里，带 `refresh_token`；之后每 6 小时检查一次、按需自动续期，不用再扫。
+把凭证放进环境变量（`BILIBILI_SESSDATA`/`BILIBILI_BILI_JCT`）也可以，适合密钥管理不想走扫码的场景。
+
+## 4. 配置
 
 复制 `agent.bilibili.example.json` 为部署配置，`AGENT_CONFIG` 指向它。登录态只走环境变量：
 
@@ -32,14 +43,14 @@ BILIBILI_CHROME_PATH=/usr/bin/google-chrome
 | `BILIBILI_CHROME_PATH` | 浏览器可执行文件；不填用 playwright 自带的 |
 | `BILIBILI_SHOT_DIR` | 截图落盘目录，默认 `data/public/shots` |
 
-## 4. 截图怎么给模型
+## 5. 截图怎么给模型
 
 `bilibili.video` 截完图要把图交给 DeepSeek 看，有两种方式：
 
 - **本机（默认）**：不配 `bilibili.publicBaseUrl`，截图以内联 `data:` URL 进请求。不需要公网地址，也不需要隧道。单张约几十到上百 KB，6 张图仍远低于请求体上限。
 - **服务器（推荐）**：配 `bilibili.publicBaseUrl` 指向 `BILIBILI_SHOT_DIR` 的公网地址，并把该目录用静态服务暴露在 `<publicBaseUrl>/shots/` 下。请求体只带 URL，带宽省下来。截图在 10 分钟后自动删除。
 
-## 5. 启动
+## 6. 启动
 
 ```sh
 NODE_ENV=production node dist/src/main.js
@@ -53,7 +64,7 @@ POST /v1/bilibili/drafts/:id/approve
 POST /v1/bilibili/drafts/:id/reject   {"note":"..."}
 ```
 
-## 6. 上线前自检
+## 7. 上线前自检
 
 ```sh
 npx tsx scripts/verify-bilibili-local.mjs BV1GJ411x7h7

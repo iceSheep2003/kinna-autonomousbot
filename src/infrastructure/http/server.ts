@@ -35,6 +35,33 @@ export function createServer(api: AdminApi, token: string) {
   app.get('/v1/jobs', async () => api.jobs());
   app.get('/v1/capabilities', async () => api.capabilities());
   app.post('/v1/events', async (request, reply) => { const result = api.ingest(EventSchema.parse(request.body)); return reply.code(202).send(result); });
+  // 登录：扫码走三步（生成 → 轮询 → 入库），凭证不会出现在任何响应里。
+  app.get('/v1/bilibili/auth', async (_request, reply) => {
+    const auth = api.bilibiliAuth?.();
+    if (!auth) return reply.code(404).send({ error: 'Bilibili is not configured' });
+    return auth.status();
+  });
+  app.post('/v1/bilibili/auth/qr', async (_request, reply) => {
+    const auth = api.bilibiliAuth?.();
+    if (!auth) return reply.code(404).send({ error: 'Bilibili is not configured' });
+    return auth.startQr();
+  });
+  app.get('/v1/bilibili/auth/qr/:key', async (request, reply) => {
+    const auth = api.bilibiliAuth?.();
+    if (!auth) return reply.code(404).send({ error: 'Bilibili is not configured' });
+    const { key } = z.object({ key: z.string().min(8).max(64) }).parse(request.params);
+    return auth.pollQr(key);
+  });
+  app.post('/v1/bilibili/auth/refresh', async (_request, reply) => {
+    const auth = api.bilibiliAuth?.();
+    if (!auth) return reply.code(404).send({ error: 'Bilibili is not configured' });
+    return auth.refresh();
+  });
+  app.post('/v1/bilibili/auth/logout', async (_request, reply) => {
+    const auth = api.bilibiliAuth?.();
+    if (!auth) return reply.code(404).send({ error: 'Bilibili is not configured' });
+    return auth.logout();
+  });
   // 公开动作的批准：只有持 owner 令牌的人能调用，模型没有这条路径。
   app.get('/v1/bilibili/drafts', async (_request, reply) => {
     const approvals = api.approvals?.();

@@ -30,11 +30,8 @@ export interface BilibiliTransport {
   request<T>(request: BilibiliRequest): Promise<T>;
   /** 非 JSON 的接口（弹幕 XML）。 */
   text(request: BilibiliRequest): Promise<string>;
-  /** 下载视频流的指定时间片段（容器内异步暂存，不返回字节）。 */
-  clip(request: { url: string; startSeconds: number; endSeconds: number; signal: AbortSignal; dir?: string; name?: string }): Promise<MediaClip>;
 }
 
-export interface MediaClip { path: string; cleanup(): void }
 
 export interface BilibiliVideo {
   meta(bvid: string, page: number, signal: AbortSignal): Promise<VideoMeta>;

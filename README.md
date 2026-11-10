@@ -145,7 +145,27 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
 - 批准：只有持 `API_TOKEN` 的人能调 `POST /v1/bilibili/drafts/:id/approve`。真正发出还要过当天额度（`maxPostsPerDay`），失败不扣额度、不自动重发。
 - `commentPolicy` / `dynamicPolicy`：`off` 连草稿都不建，`draft`（默认）出草稿等人批，`on` 同样要显式批准请求。
 
-登录态只从环境读（`BILIBILI_SESSDATA` + `BILIBILI_BILI_JCT`），不落配置文件、不进模型上下文；写请求的 `csrf` 由传输层自动补上，调用方看不到 cookie。配置示例见 `agent.bilibili.example.json`。
+### 登录与托管
+
+不需要在服务器上存账号密码：用**扫码登录**拿会话。
+
+```sh
+# 1. 生成二维码（返回 url 与 qrcode_key，180 秒有效）
+POST /v1/bilibili/auth/qr
+# 2. 手机 B 站扫码后，轮询状态：waiting / scanned / ok / expired
+GET  /v1/bilibili/auth/qr/:key
+# 3. 登录成功后 cookie 存库，带 refresh_token；每天自动检查并续期，无需再扫
+GET  /v1/bilibili/auth          # 登录状态
+POST /v1/bilibili/auth/refresh  # 手动触发刷新
+POST /v1/bilibili/auth/logout
+```
+
+- 会话存在本地库（`bilibili.session`），不进配置文件、不进模型上下文，任何接口都不回传 `SESSDATA`/`bili_jct`。
+- 续期用 B 站的 `refresh_token` + `correspondPath` 流程；**刷新失败保留旧会话**，不会让账号突然下线。
+- 也支持环境变量注入（`BILIBILI_SESSDATA` / `BILIBILI_BILI_JCT`，可选 `BILIBILI_REFRESH_TOKEN`），适合把凭证放在密钥管理里、不经过扫码。
+- 不支持账号密码登录：密码登录要过风控验证码，在服务器上存密码本身也是风险。
+
+写请求的 `csrf` 由传输层自动补上，调用方看不到 cookie。配置示例见 `agent.bilibili.example.json`。
 
 读视频不需要本地模型，也不需要 ffmpeg，只需要一个无头浏览器：
 
