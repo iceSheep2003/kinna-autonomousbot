@@ -18,7 +18,11 @@ export const QqConfigSchema = z.object({
 });
 export type QqConfig = z.infer<typeof QqConfigSchema>;
 export interface Segment { type: string; data: Record<string, unknown> }
-export interface QqPart { kind: string; text?: string; targetId?: string; resourceId?: string; faceId?: string }
+export interface QqPart {
+  kind: string; text?: string; targetId?: string; resourceId?: string; faceId?: string;
+  /** 原始片段类型（结构化/未知片段带上，排查时知道是哪种）。 */
+  type?: string;
+}
 export interface QqQuoted {
   /** 被引用消息的原文（已截断）。 */
   text: string;

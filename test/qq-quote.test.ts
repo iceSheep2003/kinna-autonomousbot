@@ -116,3 +116,59 @@ test('撤回也受白名单约束，不能跨到没授权的会话', async () =>
     { async call() { return {}; } } as never, {} as never);
   await assert.rejects(() => messaging.recall({ type: 'group', id: '999' }, '1', AbortSignal.timeout(1000)), /allowlist/);
 });
+
+/* ------------------------------ 引用的图片要能被看 ------------------------------ */
+
+test('引用里的图片注册成媒体资源，inspect_media 才用得了', async () => {
+  const { registerQuotedImages } = await import('../src/integrations/qq/quote.js');
+  const quoted = { text: '[图片]看这个', images: ['https://x/1.jpg', 'https://x/2.jpg'], resolved: true };
+  const registered: string[] = [];
+  const out = registerQuotedImages(quoted, (url, index) => { registered.push(url); return `res-${index}`; });
+  assert.deepEqual(registered, ['https://x/1.jpg', 'https://x/2.jpg']);
+  assert.deepEqual(out.imageResources, ['res-0', 'res-1']);
+  // 渲染时要把 resourceId 带出来，模型才知道去 inspect_media
+  assert.match(renderQuote(out), /resourceId: res-0,res-1/);
+});
+
+test('没有图片的引用不产生空资源列表', async () => {
+  const { registerQuotedImages } = await import('../src/integrations/qq/quote.js');
+  const out = registerQuotedImages({ text: '纯文字', images: [], resolved: true }, () => 'x');
+  assert.equal(out.imageResources, undefined, '不要塞一个空数组进去');
+  assert.doesNotMatch(renderQuote(out), /resourceId/);
+});
+
+/* ------------------------------ 非文字消息不能静默消失 ------------------------------ */
+
+test('图片/语音/视频/表情包在文本里都有占位——否则模型只看到空消息', async () => {
+  const { parseQqEvent } = await import('../src/integrations/qq/events.js');
+  const { QqConfigSchema } = await import('../src/integrations/qq/types.js');
+  const config = QqConfigSchema.parse({ selfId: '99', allowedGroups: ['123'] });
+  const parse = (message: unknown[]) => parseQqEvent({ post_type: 'message', message_type: 'group', self_id: 99, group_id: 123,
+    user_id: 2, message_id: 1, time: 1, sender: { nickname: '牢e' }, message }, config, 1)!.event;
+  assert.match(parse([{ type: 'image', data: { url: 'https://x/1.jpg' } }]).text, /\[图片\]/);
+  assert.match(parse([{ type: 'record', data: { url: 'https://x/1.mp3' } }]).text, /\[语音\]/);
+  assert.match(parse([{ type: 'video', data: { url: 'https://x/1.mp4' } }]).text, /\[视频\]/);
+  assert.match(parse([{ type: 'mface', data: { summary: '笑' } }]).text, /\[表情包/);
+});
+
+test('结构化片段有语义占位：合并转发、卡片、骰子不该变成空字符串', async () => {
+  const { parseQqEvent } = await import('../src/integrations/qq/events.js');
+  const { QqConfigSchema } = await import('../src/integrations/qq/types.js');
+  const config = QqConfigSchema.parse({ selfId: '99', allowedGroups: ['123'] });
+  const parse = (type: string) => parseQqEvent({ post_type: 'message', message_type: 'group', self_id: 99, group_id: 123,
+    user_id: 2, message_id: 1, time: 1, sender: { nickname: '牢e' }, message: [{ type, data: {} }] }, config, 1)!.event.text;
+  assert.match(parse('forward'), /合并转发/);
+  assert.match(parse('json'), /卡片消息/);
+  assert.match(parse('dice'), /骰子/);
+  assert.match(parse('shake'), /窗口抖动/);
+});
+
+test('真不认识的类型也留记号，而不是静默丢弃', async () => {
+  const { parseQqEvent } = await import('../src/integrations/qq/events.js');
+  const { QqConfigSchema } = await import('../src/integrations/qq/types.js');
+  const config = QqConfigSchema.parse({ selfId: '99', allowedGroups: ['123'] });
+  const event = parseQqEvent({ post_type: 'message', message_type: 'group', self_id: 99, group_id: 123,
+    user_id: 2, message_id: 1, time: 1, sender: { nickname: '牢e' }, message: [{ type: 'brand_new_type', data: {} }] }, config, 1)!.event;
+  assert.match(event.text, /消息类型:brand_new_type/);
+  assert.equal(event.parts[0]!.type, 'brand_new_type', '记下原始类型，排查时知道是哪种');
+});

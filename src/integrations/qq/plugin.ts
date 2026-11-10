@@ -3,7 +3,7 @@ import type { IncomingEvent } from '../../runtime/types.js';
 import type { QqConfig, QqEvent } from './types.js';
 import type { OneBotPort, QqChannelPort, QqMediaSource, QqPerception, QqSpeech, QqMemeSource, QqState } from './ports.js';
 import { parseQqEvent, savePlatformEvent } from './events.js';
-import { resolveQuote } from './quote.js';
+import { registerQuotedImages, resolveQuote } from './quote.js';
 import { QqMessaging } from './messaging.js';
 import { registerQqTools } from './tools.js';
 import { QqAdministration } from './admin.js';
@@ -67,7 +67,15 @@ export function createQqPlugin(deps: QqPluginOptions): EnvironmentPlugin {
         // 引用：入站事件里只有被引用消息的 id，必须立刻取回原文，
         // 否则模型只知道「有人引用了 123」，不知道 123 说了什么。
         if (parsed.event.replyTo !== undefined && parsed.event.quoted === undefined) {
-          parsed.event = { ...parsed.event, quoted: await resolveQuote(gateway, parsed.event.replyTo) };
+          const quoted = await resolveQuote(gateway, parsed.event.replyTo);
+          // 引用里的图片也注册成媒体资源：只留 URL 的话 inspect_media 用不了，
+          // 而且 QQ 的图片 URL 带签名，过一会儿就失效。
+          parsed.event = { ...parsed.event, quoted: registerQuotedImages(quoted, (url, index) => {
+            const resourceId = `${parsed.event.id}:quote:${index}`;
+            parsed.media.push({ id: resourceId, kind: 'image', scope: parsed.event.groupId ? { type: 'group', id: parsed.event.groupId } : { type: 'private', id: parsed.event.userId },
+              eventId: parsed.event.id, url: url.slice(0, 4000) });
+            return resourceId;
+          }) };
         }
         if (!state.event(parsed.event.id)) savePlatformEvent(state, parsed.event, parsed.media);
         await deliver();

@@ -12,7 +12,28 @@ import type { OneBotPort } from './ports.js';
  * 2. **截断**：引用原文最多 1200 字，防止一条长引用把整轮上下文吃光。
  * 3. 只读不执行：取回来的内容是**资料**，不是指令。注入时要标明这一点。
  */
-export interface QuotedMessage { text: string; nickname?: string; images: string[]; resolved: boolean }
+export interface QuotedMessage {
+  text: string; nickname?: string; images: string[]; resolved: boolean;
+  /** 引用图片注册后的资源 id，供 inspect_media 用。 */
+  imageResources?: string[];
+}
+
+/**
+ * 把引用里的图片注册成媒体资源，资源 id 回填进 quoted。
+ *
+ * 为什么必须注册而不是只留 URL：`inspect_media` 只认 resourceId，
+ * 它会去下载字节再交给视觉模型。只把 URL 交给模型等于「知道有个链接」，
+ * 但看不到图——这正是「引用的图片读不到」。
+ * 而且 QQ 的图片 URL 带签名会过期，存 URL 过一会儿就失效。
+ */
+export function registerQuotedImages(
+  quoted: QuotedMessage,
+  save: (url: string, index: number) => string,
+): QuotedMessage {
+  if (quoted.images.length === 0) return quoted;
+  const resourceIds = quoted.images.map((url, index) => save(url, index));
+  return { ...quoted, imageResources: resourceIds };
+}
 
 const QUOTE_MAX_CHARS = 1200;
 
@@ -72,5 +93,7 @@ export function renderQuote(quoted: QuotedMessage | undefined): string {
   if (quoted === undefined) return '';
   if (!quoted.resolved) return '[引用了另一条消息，但内容取不到（可能已撤回）]';
   const who = quoted.nickname === undefined ? '某人' : quoted.nickname;
-  return `[引用 ${who} 之前说的：${quoted.text}]`;
+  const imageNote = quoted.imageResources !== undefined && quoted.imageResources.length > 0
+    ? `（含图片，resourceId: ${quoted.imageResources.join(',')}）` : '';
+  return `[引用 ${who} 之前说的：${quoted.text}]${imageNote}`;
 }

@@ -5,6 +5,18 @@ import type { MediaRef, QqConfig, QqEvent, Segment, Target } from './types.js';
 
 const TEXT_BUDGET = 6000;
 const MEDIA_TYPES = new Set(['image', 'record', 'video', 'mface', 'marketface']);
+/**
+ * 结构化片段在文本里的占位。
+ *
+ * 这些类型没有文件可下载，但有语义：合并转发、卡片、骰子……
+ * 全部丢掉的话消息会变成空字符串，模型只会觉得「他发了个空消息」。
+ */
+const STRUCTURED: Record<string, string> = {
+  forward: '[合并转发]', json: '[卡片消息]', xml: '[卡片消息]', music: '[音乐分享]',
+  location: '[位置]', contact: '[名片]', shake: '[窗口抖动]', dice: '[骰子]',
+  rps: '[猜拳]', touch: '[双击头像]', markdown: '[富文本]',
+};
+
 /** 媒体在文本里的占位：不占位的话「发来一张图」在 text 上完全看不出来。 */
 const MEDIA_LABEL: Record<string, string> = { image: '[图片]', record: '[语音]', video: '[视频]', mface: '[表情包]', marketface: '[表情包]' };
 const MESSAGE_TYPES = new Set(['group', 'private']);
@@ -97,7 +109,14 @@ function applyPart(part: Segment, index: number, sink: PartSink): void {
   if (part.type === 'reply') return applyReply(part, sink);
   if (part.type === 'face') return applyFace(part, sink);
   if (MEDIA_TYPES.has(part.type)) return applyMedia(part, index, sink);
-  sink.event.parts.push({ kind: 'unknown' });
+  // 认得的「非文字但也不是文件」类型：至少让模型知道发生了什么。
+  // 静默丢掉的话，那条消息在文本里就是个空字符串——线上 21% 的消息
+  // 退化成 `[非文字消息]` 就是这么来的。
+  if (part.type in STRUCTURED) { sink.event.text += STRUCTURED[part.type]; sink.event.parts.push({ kind: 'structured', type: part.type }); return; }
+  // 真不认识的也留个记号，而不是让它消失。带上类型名，排查时能知道是哪种。
+  const label = `[消息类型:${part.type.slice(0, 20)}]`.slice(0, 40);
+  sink.event.text += label;
+  sink.event.parts.push({ kind: 'unknown', type: part.type.slice(0, 20) });
 }
 
 function applyText(part: Segment, sink: PartSink): void {
