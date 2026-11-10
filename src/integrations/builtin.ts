@@ -34,6 +34,16 @@ export function registerMemory(registry: CapabilityRegistrar, memory: MemoryView
       return memory.promote(args.id, args.why, clock());
     },
   });
+  // 展开索引条目：索引只给一句话，真正要用时才把全文取出来。
+  const expand = z.object({ ids: z.array(z.string().min(1).max(64)).min(1).max(10) });
+  registry.register({
+    name: 'memory.expand', description: '把记忆索引里那几个标了「展开」的 id 取出全文。索引只有一句话，判断要用得上细节时再展开。',
+    effect: 'read', input: expand,
+    async run(raw) {
+      if (!memory.expand) return [];
+      return memory.expand(expand.parse(raw).ids);
+    },
+  });
   const read = z.object({ after: z.number().int().min(0), limit: z.number().int().min(1).max(20).default(10) });
   registry.register({ name: 'experience.read', description: '翻回当时记下的原话，确认自己没记错、没把推测当成事实', effect: 'read', input: read,
     async run(raw) { const args = read.parse(raw); return experience.read(args.after, args.limit); },

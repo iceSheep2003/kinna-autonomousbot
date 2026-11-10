@@ -21,6 +21,7 @@ import { contradiction, decideDedupe } from './dedupe.js';
 import { buildPromotion, refusePromotion } from './promote.js';
 import { revive } from './forget.js';
 import { inverseFrequency } from './text.js';
+import { renderIndex } from './index-layer.js';
 import type { ExperienceLog } from './ports.js';
 
 export interface MemoryServiceOptions {
@@ -128,6 +129,20 @@ export class MemoryService implements MemoryView {
     this.repository.publish(buildPromotion(memory, why, now));
     this.experience?.record('self', 'memory.promoted', { id, from: memory.scope, why }, now);
     return { ok: true };
+  }
+
+  /** 索引读一层：仓储没实现就没有索引，注入时自然省略。 */
+  index() { return this.repository.index?.(); }
+
+  /** 渲染好的索引文本，给上下文直接用。 */
+  indexText(): string {
+    const index = this.repository.index?.();
+    return index ? renderIndex(index).text : '';
+  }
+
+  /** 按 id 展开：只返回真的存在的，顺序按传入顺序，方便模型对照索引。 */
+  expand(ids: readonly string[]): Memory[] {
+    return ids.map(id => this.repository.get(id)).filter((memory): memory is Memory => memory !== undefined);
   }
 
   /** 提炼写入：模型给的是 proposal，是否被接受由这里的持久化策略说了算。 */

@@ -47,8 +47,12 @@ export class SelfContextBuilder {
     const cursor = this.session.cursor();
     const observations = this.inbox.read(cursor, this.limits.observations);
     const query = JSON.stringify(observations).slice(0, payloadBudget.recallQueryChars);
+    const indexText = this.memory.indexText?.() ?? '';
     return { cursor, now, trigger, previousAttemptError, subject: this.subject.read(),
-      goals: this.subject.goals(query, this.limits.goals), memories: this.memory.recall(query, this.limits.memories),
+      goals: this.subject.goals(query, this.limits.goals),
+      // 索引优先：先给一份目录（我记得什么），细节留给 memory.expand。
+      ...(indexText === '' ? {} : { memoryIndex: indexText }),
+      memories: this.memory.recall(query, this.limits.memories),
       observations, recent: this.session.recentDecisions(this.limits.recentTurns),
       // 自己想做的事：只给开着的、最新的几条，避免清单一长就变成负担。
       ...(this.todos ? { todos: this.todos().slice(0, 5) } : {}),

@@ -108,6 +108,19 @@ export const DreamRoundSchema = z.object({
    * 判断由模型自己做，没有人工审核环节；执行时只做结构上的拦截。
    */
   promotions: z.array(z.object({ id, why: text.max(200) })).max(10).optional(),
+  /**
+   * 记忆索引（对齐 Claude 的 MEMORY.md）：**全量替换**，不是增量。
+   *
+   * 为什么要全量：索引的价值就在于它是一份「当前全景」。增量修改几次之后，
+   * 索引会变成历史补丁的拼接，谁也不清楚里面还有效的有多少。
+   * 为什么不省略：不传表示「这次不动索引」，不是「清空」。
+   */
+  index: z.array(z.object({
+    topic: text.max(40),
+    summary: text.max(60),
+    memoryIds: z.array(id).min(1).max(20),
+    weight: z.number().min(0).max(5).default(3),
+  })).max(40).optional(),
   /** 翻出来的机会：想做但还没做的事。只给 self 当素材，不会直接变成任何动作。 */
   opportunities: z.array(OpportunitySchema).max(OPPORTUNITY_MAX_ITEMS).optional(),
   failedApproaches: z.array(text).max(20).optional(),

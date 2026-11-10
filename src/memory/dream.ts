@@ -4,7 +4,8 @@ import type { ContextLimits } from '../shared/limits.js';
 import type { DreamFeedback, ExperienceLog, MemoryRepository } from './ports.js';
 import { DreamRoundSchema, type DreamLoop, type DreamRound, type DreamVersion, type Memory, type Opportunity } from './types.js';
 import { lived } from './lived.js';
-import { buildPromotion, refusePromotion } from './promote.js';
+import { promoteMemories, writeMemoryIndex, type DreamPromotion } from './dream-effects.js';
+import type { IndexEntry } from './index-layer.js';
 import { screenOpportunities } from './opportunity.js';
 import { checkMemory, guardScope, judge, loopOf, snapshotOf, type Workbook } from './replay-rules.js';
 import { DREAM_INSTRUCTIONS, DREAM_REPLAY_NOTES } from './dream-prompts.js';
@@ -62,6 +63,8 @@ interface DreamResult {
   opportunities: Opportunity[];
   /** 模型判断该提到通用层的记忆。 */
   promotions: DreamPromotion[];
+  /** 模型给出的记忆索引；undefined 表示这次不动索引。 */
+  index?: IndexEntry[];
 }
 
 /**
@@ -107,7 +110,7 @@ export class DreamService {
     return () => this.commit({
       id, cursor, cutoff, revisions, ops: loop.ops, rounds: loop.rounds, converged: loop.converged, now,
       notify: true, summary: loop.summary, proposals: loop.proposals, failedApproaches: loop.failedApproaches,
-      promotions: loop.promotions,
+      promotions: loop.promotions, ...(loop.index ? { index: loop.index } : {}),
       opportunities: loop.opportunities,
     });
   }
@@ -171,6 +174,8 @@ export class DreamService {
   private collect(raw: DreamRound, outcome: ReplayOutcome): void {
     if (raw.proposals?.length) outcome.proposals = [...raw.proposals];
     if (raw.failedApproaches?.length) outcome.failedApproaches = [...raw.failedApproaches];
+    // 索引是「最后一遍为准」：后面的回放看到的内容更全，前面那版自然被取代。
+    if (raw.index !== undefined) outcome.index = raw.index;
     if (raw.promotions?.length) {
       // 多遍取并集：同一 id 以后一遍的理由为准（它看到了更多上下文）。
       outcome.promotions = mergeById(outcome.promotions, raw.promotions.map(item => ({ id: item.id, why: item.why })));
@@ -258,26 +263,6 @@ export class DreamService {
     return screened.accepted;
   }
 
-  /**
-   * 执行模型判断的提升：复制到 owner 层，不动原记录。
-   *
-   * 没有人工审核这一环，所以这里只拦**结构上说不通**的（过期、非 active、已经在通用层、
-   * bot 自有状态）。判断"这条该不该通用"由模型负责——它是唯一读到上下文的角色。
-   * 抬不上去就记一条经验，不抛错：一条记忆提不上去不该让整次整合失败。
-   */
-  private promote(promotions: readonly DreamPromotion[], now: number): void {
-    for (const item of promotions) {
-      const memory = this.repository.get(item.id);
-      const refusal = refusePromotion(memory, now);
-      if (refusal !== undefined || !memory) {
-        this.experience.record('dream', 'dream.promotion.refused', { id: item.id, reason: refusal ?? '没有这条' }, now);
-        continue;
-      }
-      this.repository.publish(buildPromotion(memory, item.why, now));
-      this.experience.record('dream', 'dream.promotion.applied', { id: item.id, from: memory.scope, why: item.why }, now);
-    }
-  }
-
   private commit(result: DreamResult): void {
     const { id, cursor, cutoff, revisions, ops, now } = result;
     if (this.repository.cursor() !== cursor) throw new Error('Dream cursor conflict');
@@ -286,7 +271,10 @@ export class DreamService {
       // 撤回/合并在库里只留一个最小痕迹：不删历史（source 链要保持可回溯），标记状态。
       else this.retire(op.id, 'superseded', revisions);
     }
-    this.promote(result.promotions, now);
+    // 副作用交给独立模块：回放决定「记什么」，这里决定「怎么组织」，后者失败不影响前者。
+    const effects = { repository: this.repository, experience: this.experience };
+    promoteMemories(effects, result.promotions, now);
+    writeMemoryIndex(effects, result.index, now);
     const version: DreamVersion = {
       id, cursor, cutoff, status: 'published', at: now, rounds: result.rounds, converged: result.converged,
       candidate: {
@@ -344,9 +332,9 @@ type ReplayOutcome = {
   proposals: string[]; failedApproaches: string[]; opportunities: Opportunity[]; ops: DreamOp[];
   /** 模型判断「这条不该只在这个场合成立」；由 commit 复制到 owner 层。 */
   promotions: DreamPromotion[];
+  /** 模型给出的记忆索引；最后一遍为准（它看到的内容最全）。 */
+  index?: IndexEntry[];
 };
-
-type DreamPromotion = { id: string; why: string };
 
 /** 按 id 合并两批：后来的覆盖前面的，顺序按首次出现。 */
 function mergeById<T extends { id: string }>(prior: readonly T[], next: readonly T[]): T[] {
