@@ -1,4 +1,5 @@
-import { QR_CODE, type Session, type SessionRefresher } from '../../integrations/bilibili/session.js';
+import { QR_CODE, RefreshUnavailable, type Session, type SessionRefresher } from '../../integrations/bilibili/session.js';
+export { RefreshUnavailable };
 
 const PASSPORT = 'https://passport.bilibili.com';
 const WWW = 'https://www.bilibili.com';
@@ -68,12 +69,23 @@ export async function shouldRefresh(session: Session, signal: AbortSignal): Prom
 }
 
 /**
- * correspondPath = RSA-OAEP(SHA-256) 加密 `refresh_<毫秒时间戳>`，再用小写 base16 编码。
- * 算法来自 B 站前端 wasm 的逆向结论；浏览器与 Node 的 WebCrypto 都直接能做。
+ * B 站前端在加密前先做的一步预处理：把字符串每个 UTF-16 码元转成十六进制再拼接。
+ * 取自其首页打包产物里的 `function ij(e){…charCodeAt(n).toString(16)…}`；
+ * 不做这步，服务端解出来的明文对不上，会当无效路径处理。
+ */
+export function preprocess(message: string): string {
+  let out = '';
+  for (let index = 0; index < message.length; index += 1) out += message.charCodeAt(index).toString(16);
+  return out;
+}
+
+/**
+ * correspondPath = RSA-OAEP(SHA-256) 加密 `ij("refresh_<毫秒时间戳>")`，再用小写 base16 编码。
+ * 公钥与预处理都来自 B 站前端；浏览器与 Node 的 WebCrypto 都能直接算。
  */
 export async function correspondPath(timestampMs: number): Promise<string> {
   const key = await crypto.subtle.importKey('jwk', { ...JWK, ext: true }, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
-  const encrypted = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, key, new TextEncoder().encode(`refresh_${timestampMs}`));
+  const encrypted = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, key, new TextEncoder().encode(preprocess(`refresh_${timestampMs}`)));
   return [...new Uint8Array(encrypted)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -92,23 +104,28 @@ export class BilibiliLogin implements SessionRefresher {
   /**
    * correspondPath → 页面里的 refresh_csrf。
    *
-   * 2026-11-10 实测：`/correspond/1/{path}` 在 www 与 passport 两个域都返回 404（不带 cookie 也一样），
-   * 说明路径已随前端改版失效。这里抛一条说清楚的错，让会话托管者走「等过期后重新扫码」而不是反复重试。
+   * 这个口令是「按需发放」的：`cookie/info` 说不需要刷新时，`/correspond` 大概率不给有效页面。
+   * 所以调用前必须先问 `cookie/info`（见 refreshIfNeeded），否则会把正常的「现在还不用刷」
+   * 误判成「接口坏了」——这正是 2026-11-10 那次误判的来源。
    */
   private async refreshCsrf(cookie: string, signal: AbortSignal): Promise<string> {
     const path = await correspondPath(Date.now());
     const response = await fetch(`${WWW}/correspond/1/${path}`, { headers: baseHeaders(cookie), signal });
     if (!response.ok) {
-      throw new Error(`自动续期不可用：/correspond 返回 HTTP ${response.status}（B 站前端改版后该路径已失效）；当前会话仍可用，到期后需要重新扫码`);
+      throw new RefreshUnavailable(`/correspond 返回 HTTP ${response.status}：平台这次没有发放 refresh_csrf（不一定是故障，可能是当前不需要刷新），会话仍可用`);
     }
     const refreshCsrf = parseRefreshCsrf(await response.text());
-    if (!refreshCsrf) throw new Error('correspond 页面里没有 refresh_csrf（可能登录态已失效）');
+    if (!refreshCsrf) throw new RefreshUnavailable('correspond 页面里没有 refresh_csrf，会话仍可用');
     return refreshCsrf;
   }
 
-  /** 端口实现：先问 B 站该不该刷新，再决定要不要真的换 Cookie。 */
+  /**
+   * 端口实现：先问 B 站该不该刷新，需要才真的换 Cookie。
+   * 「不需要刷新」是正常结果（返回 undefined），不是失败；只有平台拒绝时才抛错。
+   */
   async refreshIfNeeded(session: Session, signal: AbortSignal): Promise<Session | undefined> {
-    return (await shouldRefresh(session, signal).catch(() => false)) ? this.refresh(session, signal) : undefined;
+    if (!(await shouldRefresh(session, signal).catch(() => false))) return undefined;
+    return this.refresh(session, signal);
   }
 
   /** 生成二维码内容与轮询密钥；二维码 180 秒有效。 */

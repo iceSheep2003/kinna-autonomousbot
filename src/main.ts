@@ -118,8 +118,9 @@ const app = createServer({ ...adminApi,
   ...(bilibiliConfig.enabled ? { bilibiliTodo: () => todoBoard } : {}) }, API_TOKEN);
 // 启动后每天检查一次 Cookie 是否需要刷新；失败只记日志，不影响其他能力。
 setInterval(() => { void sessionHost.ensureFresh().then(result => {
-  if (result.refreshed) console.log('[bilibili] session refreshed');
-  else if (result.reason && !result.reason.includes('还没到')) console.log('[bilibili] session check:', result.reason);
+  // 只有真的换了 Cookie 或真出错才记日志；「不需要刷新」是常态，不刷屏。
+  if (result.outcome === 'refreshed') console.log('[bilibili] session refreshed');
+  else if (result.outcome === 'failed') console.log('[bilibili] session refresh failed:', result.reason);
 }); }, 6 * 3600_000).unref();
 await app.listen({ host: process.env.HOST ?? '127.0.0.1', port: Number(process.env.PORT ?? 3100) });
 let stopped = false;

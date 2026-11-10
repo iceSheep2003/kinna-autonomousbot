@@ -1,4 +1,7 @@
-import type { Session, SessionRefresher, SessionStore } from '../integrations/bilibili/session.js';
+import { RefreshUnavailable, type Session, type SessionRefresher, type SessionStore } from '../integrations/bilibili/session.js';
+
+/** 续期检查的结果。区分「不需要」与「失败」，避免制造误导性告警。 */
+export type RefreshOutcome = 'refreshed' | 'not-needed' | 'unavailable' | 'failed' | 'not-due' | 'no-session';
 
 const DAY = 86_400_000;
 
@@ -46,23 +49,27 @@ export class SessionHost {
   }
 
   /**
-   * 该刷新就刷新。返回是否发生了刷新；网络或接口异常时保留原会话。
-   * 没有 refresh_token 的会话（来自环境变量）不会尝试刷新。
+   * 该刷新就刷新。三种结果分开报，别把「不需要」说成「失败」：
+   * - refreshed：真的换了新 Cookie；
+   * - not-needed：B 站认为当前 Cookie 仍然有效（最常见，也是最正常的情况）；
+   * - unavailable：平台这次没发放 refresh_csrf，会话仍可用，只是这次续不了。
+   * 网络或接口异常时一律保留原会话。
    */
-  async ensureFresh(signal: AbortSignal = AbortSignal.timeout(20_000)): Promise<{ refreshed: boolean; reason?: string }> {
+  async ensureFresh(signal: AbortSignal = AbortSignal.timeout(20_000)): Promise<{ outcome: RefreshOutcome; reason?: string }> {
     const session = this.current;
-    if (!session) return { refreshed: false, reason: '没有登录会话' };
-    if (this.time() - this.lastCheckedAt < (this.deps.checkIntervalMs ?? DAY)) return { refreshed: false, reason: '还没到检查时间' };
+    if (!session) return { outcome: 'no-session', reason: '没有登录会话' };
+    if (this.time() - this.lastCheckedAt < (this.deps.checkIntervalMs ?? DAY)) return { outcome: 'not-due', reason: '还没到检查时间' };
     this.lastCheckedAt = this.time();
-    if (!session.refreshToken) return { refreshed: false, reason: '没有 refresh_token，需要重新扫码登录才能续期' };
+    if (!session.refreshToken) return { outcome: 'unavailable', reason: '没有 refresh_token，需要重新扫码登录才能续期' };
     try {
       const next = await this.deps.refresher.refreshIfNeeded(session, signal);
-      if (!next) return { refreshed: false, reason: 'B 站认为当前 Cookie 还不需要刷新' };
+      if (!next) return { outcome: 'not-needed', reason: 'B 站认为当前 Cookie 还不需要刷新' };
       this.adopt(next);
-      return { refreshed: true };
+      return { outcome: 'refreshed' };
     } catch (error) {
-      // 保留旧会话：刷新失败不代表旧 Cookie 立刻失效。
-      return { refreshed: false, reason: `刷新失败：${(error as Error).message}` };
+      // 平台没发放续期能力 vs 真的出错：前者不是故障，后者才需要关注。
+      const unavailable = error instanceof RefreshUnavailable;
+      return { outcome: unavailable ? 'unavailable' : 'failed', reason: (error as Error).message };
     }
   }
 }

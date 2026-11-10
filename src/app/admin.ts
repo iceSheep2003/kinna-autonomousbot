@@ -19,8 +19,8 @@ export interface BilibiliAuth {
   status(): { loggedIn: boolean; source?: string; verifiedAt?: number; hasRefreshToken: boolean };
   startQr(): Promise<{ url: string; qrcodeKey: string }>;
   pollQr(qrcodeKey: string): Promise<{ status: string }>;
-  /** B 站说该刷新时刷新；不传参就是「按需」。 */
-  refresh(): Promise<{ refreshed: boolean; reason?: string }>;
+  /** 按需续期；结果区分 refreshed / not-needed / unavailable / failed。 */
+  refresh(): Promise<{ outcome: string; reason?: string }>;
   logout(): { ok: boolean };
 }
 

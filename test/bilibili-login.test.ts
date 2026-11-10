@@ -52,7 +52,7 @@ test('环境变量会话：缺一项就当未登录，不会带半套凭证去�
 test('会话托管：没有 refresh_token 时不尝试刷新，并说明原因', async () => {
   const host = new SessionHost({ store: fakeStore(baseSession({ refreshToken: undefined })), refresher: { refreshIfNeeded: async () => { throw new Error('不该被调用'); } }, now: () => NOW });
   const result = await host.ensureFresh();
-  assert.equal(result.refreshed, false);
+  assert.equal(result.outcome, 'unavailable');
   assert.match(result.reason ?? '', /重新扫码/);
 });
 
@@ -61,7 +61,7 @@ test('会话托管：到点检查时询问刷新器；不需要刷新就保留�
   const host = new SessionHost({ store: fakeStore(baseSession()), refresher: { refreshIfNeeded: async () => { calls += 1; return undefined; } }, now: () => NOW });
   const result = await host.ensureFresh();
   assert.equal(calls, 1);
-  assert.equal(result.refreshed, false);
+  assert.equal(result.outcome, 'not-needed', '不需要刷新是正常结果，不能算失败');
   assert.equal(host.session()?.sessdata, 'sess');
 });
 
@@ -69,16 +69,16 @@ test('会话托管：刷新成功会替换并落库；同一检查周期内不�
   const store = fakeStore(baseSession());
   const next = baseSession({ sessdata: 'sess-new', refreshToken: 'rt-new', verifiedAt: NOW });
   const host = new SessionHost({ store, refresher: { refreshIfNeeded: async () => next }, now: () => NOW });
-  assert.equal((await host.ensureFresh()).refreshed, true);
+  assert.equal((await host.ensureFresh()).outcome, 'refreshed');
   assert.equal(host.session()?.sessdata, 'sess-new');
   assert.equal(store.read()?.refreshToken, 'rt-new');
-  assert.equal((await host.ensureFresh()).refreshed, false, '刚检查过，不再触发');
+  assert.equal((await host.ensureFresh()).outcome, 'not-due', '刚检查过，不再触发');
 });
 
 test('会话托管：刷新抛错时保留旧会话，不让账号突然下线', async () => {
   const host = new SessionHost({ store: fakeStore(baseSession()), refresher: { refreshIfNeeded: async () => { throw new Error('86095'); } }, now: () => NOW });
   const result = await host.ensureFresh();
-  assert.equal(result.refreshed, false);
+  assert.equal(result.outcome, 'failed');
   assert.match(result.reason ?? '', /86095/);
   assert.equal(host.session()?.sessdata, 'sess');
 });
@@ -116,15 +116,43 @@ test('刷新后合并：新 cookie 优先，缺的字段沿用旧的，绝不拼
   assert.equal(partial.refreshToken, 'rt-old');
 });
 
-test('续期路径失效时错误信息说清「会话仍可用、到期重新扫码」，而不是含糊失败', async () => {
-  const { BilibiliLogin } = await import('../src/infrastructure/bilibili/login.js');
+test('平台没发放 refresh_csrf 时报「续期不可用、会话仍可用」，而不是把它说成登录失效', async () => {
+  const { BilibiliLogin, RefreshUnavailable } = await import('../src/infrastructure/bilibili/login.js');
   const original = globalThis.fetch;
   globalThis.fetch = (async (url: unknown) => {
+    // cookie/info 说「需要刷新」，但 correspond 不发令牌（平台按需发放时的真实表现）
+    if (String(url).includes('cookie/info')) return new Response(JSON.stringify({ code: 0, data: { refresh: true, timestamp: Date.now() } }), { status: 200 });
     if (String(url).includes('/correspond/')) return new Response('not found', { status: 404 });
     return new Response(JSON.stringify({ code: 0, data: {} }), { status: 200 });
   }) as typeof fetch;
   try {
     const login = new BilibiliLogin();
-    await assert.rejects(() => login.refresh(baseSession(), AbortSignal.timeout(1000)), /自动续期不可用[\s\S]*重新扫码/);
+    const error = await login.refreshIfNeeded(baseSession(), AbortSignal.timeout(1000)).then(() => null, e => e);
+    assert.ok(error instanceof RefreshUnavailable, `应抛 RefreshUnavailable，实际 ${error}`);
+    assert.match(error.message, /会话仍可用/);
   } finally { globalThis.fetch = original; }
+});
+
+test('平台说不需要刷新时，refreshIfNeeded 直接返回 undefined（不发任何刷新请求）', async () => {
+  const { BilibiliLogin } = await import('../src/infrastructure/bilibili/login.js');
+  const original = globalThis.fetch; let refreshCalls = 0;
+  globalThis.fetch = (async (url: unknown) => {
+    if (String(url).includes('cookie/info')) return new Response(JSON.stringify({ code: 0, data: { refresh: false } }), { status: 200 });
+    if (String(url).includes('cookie/refresh')) refreshCalls += 1;
+    return new Response(JSON.stringify({ code: 0, data: {} }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const result = await new BilibiliLogin().refreshIfNeeded(baseSession(), AbortSignal.timeout(1000));
+    assert.equal(result, undefined);
+    assert.equal(refreshCalls, 0, '不需要刷新时不该调用刷新接口');
+  } finally { globalThis.fetch = original; }
+});
+
+test('加密前要做 B 站前端那一步 ij()：每个字符转十六进制再拼接', async () => {
+  const { preprocess } = await import('../src/infrastructure/bilibili/login.js');
+  // 取自 B 站首页打包产物：function ij(e){…e.charCodeAt(n).toString(16)…}
+  assert.equal(preprocess('refresh_1234567890'), '726566726573685f31323334353637383930');
+  assert.equal(preprocess('ab'), '6162');
+  // 与前端行为一致：不做 base64/padding，也不区分大小写以外的格式。
+  assert.equal(preprocess(''), '');
 });

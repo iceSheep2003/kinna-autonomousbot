@@ -48,6 +48,12 @@ export const QR_CODE = {
   waiting: 86101,
 } as const;
 
+/**
+ * 平台没有发放续期能力（而不是我们请求出错）。
+ * 和真正的失败分开：这类情况不该报警、不该让账号下线，只说明「这次续不了」。
+ */
+export class RefreshUnavailable extends Error {}
+
 /** 会话托管需要的刷新能力；实现由基础设施层提供，应用层只认这个窄接口。 */
 export interface SessionRefresher {
   /** 该刷新就刷新，返回新会话；不需要或失败返回 undefined，由调用方决定是否保留旧会话。 */
