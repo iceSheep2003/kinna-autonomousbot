@@ -23,14 +23,32 @@ export class DraftQueue {
   private time(): number { return this.deps.now?.() ?? Date.now(); }
 
   /** 提交一条公开动作：内容不合格、策略关闭或额度用完时直接拒绝，不建草稿。 */
-  submit(input: { kind: PostKind; content: string; reason: string } & PostTarget): { ok: true; draft: Draft } | { ok: false; reason: string } {
+  /**
+   * 提交一条公开动作。策略为 direct 时在这里直接发出；draft 时只入队等人批。
+   * 两条路都要先过正文规则与每日额度。
+   */
+  async submit(input: { kind: PostKind; content: string; reason: string } & PostTarget): Promise<
+    { ok: true; draft: Draft; posted?: string } | { ok: false; reason: string }> {
     const admitted = admitPost(input.kind, { policy: this.policyOf(input.kind), enabled: this.deps.config.enabled });
     if (admitted.stage === 'refuse') return { ok: false, reason: `${input.kind === 'comment' ? '评论' : '动态'}发布已关闭` };
-    const content = checkContent(input.kind, input.content);
-    if (!content.ok) return { ok: false, reason: content.reason };
-    if (this.used(input.kind) >= this.deps.config.maxPostsPerDay) return { ok: false, reason: '今天的公开发布额度已用完' };
+    const refusal = this.validate(input.kind, input.content);
+    if (refusal !== undefined) return { ok: false, reason: refusal };
+    const draft = this.draftOf(input);
+    if (admitted.stage === 'direct') {
+      const sent = await this.send(draft, { by: 'direct' });
+      if (sent.ok) return { ok: true, draft: sent.draft!, posted: sent.draft!.postedId };
+      // 直接发失败：留一条 rejected 记录供事后查，但不留在待批队列里假装还能批。
+      this.deps.state.saveDraft({ ...draft, status: 'rejected', decidedAt: this.time(), decisionNote: (sent.reason ?? '发送失败').slice(0, 500) });
+      return { ok: false, reason: sent.reason ?? '发送失败' };
+    }
+    this.deps.state.saveDraft(draft);
+    return { ok: true, draft };
+  }
+
+  /** 组装草稿记录；目标字段有才写，避免存一堆 undefined。 */
+  private draftOf(input: { kind: PostKind; content: string; reason: string } & PostTarget): Draft {
     const now = this.time();
-    const draft: Draft = {
+    return {
       id: `draft-${randomUUID()}`, kind: input.kind, content: input.content.trim(),
       reason: input.reason.slice(0, 500), createdAt: now, expiresAt: now + this.deps.config.draftTtlMs, status: 'pending',
       ...(input.targetBvid ? { targetBvid: input.targetBvid } : {}),
@@ -38,8 +56,13 @@ export class DraftQueue {
       ...(typeof input.rootRpid === 'number' ? { rootRpid: input.rootRpid } : {}),
       ...(typeof input.parentRpid === 'number' ? { parentRpid: input.parentRpid } : {}),
     };
-    this.deps.state.saveDraft(draft);
-    return { ok: true, draft };
+  }
+
+  /** 正文规则 + 当日额度；返回拒绝原因，undefined 表示可以发。 */
+  private validate(kind: PostKind, content: string): string | undefined {
+    const checked = checkContent(kind, content);
+    if (!checked.ok) return checked.reason;
+    return this.used(kind) >= this.deps.config.maxPostsPerDay ? '今天的公开发布额度已用完' : undefined;
   }
 
   pending(limit = 20): Draft[] { return this.deps.state.pendingDrafts(this.time(), limit).filter(item => item.status === 'pending'); }
@@ -85,7 +108,7 @@ export class DraftQueue {
     return remainingQuota(kind, this.used(kind), this.deps.config.maxPostsPerDay);
   }
 
-  private policyOf(kind: PostKind): 'off' | 'draft' | 'on' {
+  private policyOf(kind: PostKind): 'off' | 'draft' | 'direct' {
     return kind === 'comment' ? this.deps.config.commentPolicy : this.deps.config.dynamicPolicy;
   }
 

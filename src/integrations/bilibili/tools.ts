@@ -37,6 +37,87 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
     if (!allowed.ok) throw new Error(allowed.reason);
   };
 
+  registerVideoTool(registry, deps, { video, guard });
+
+  registry.register({
+    name: 'bilibili.comments', description: '读一个视频的评论区（按热度或时间），看大家在聊什么、谁说的话值得回应。',
+    effect: 'read', input: z.object({ bvid: VIDEO, limit: z.number().int().min(1).max(20).default(10), sort: z.enum(['time', 'hot']).default('hot') }),
+    async run(raw, { signal }) {
+      const input = raw as { bvid: string; limit: number; sort: 'time' | 'hot' };
+      const meta = await video.meta(input.bvid, 1, signal);
+      guard(meta);
+      const list = await messages.comments({ aid: meta.aid, bvid: meta.bvid, limit: input.limit, sort: input.sort }, signal);
+      return { video: { bvid: meta.bvid, title: meta.title }, comments: list };
+    },
+  });
+
+  registry.register({
+    name: 'bilibili.draft_comment', description: '回复某个视频（或某条评论）。按配置的策略，可能直接发出，也可能先存成草稿等人批准——返回值会说明是哪一种。',
+    effect: 'read', input: z.object({ bvid: VIDEO, message: z.string().min(1).max(1000), reason: z.string().min(1).max(500), replyToRpid: z.number().int().positive().optional() }),
+    async run(raw, { signal }) {
+      const input = raw as { bvid: string; message: string; reason: string; replyToRpid?: number };
+      const meta = await video.meta(input.bvid, 1, signal);
+      guard(meta);
+      const result = await drafts.submit({ kind: 'comment', content: input.message, reason: input.reason, targetBvid: meta.bvid, targetAid: meta.aid,
+        ...(input.replyToRpid ? { parentRpid: input.replyToRpid, rootRpid: input.replyToRpid } : {}) });
+      if (!result.ok) return { refused: result.reason };
+      return result.posted ? { posted: result.posted, note: '已直接发出' } : { draft: publicDraft(result.draft) };
+    },
+  });
+
+  registry.register({
+    name: 'bilibili.draft_dynamic', description: '发一条纯文本动态。按配置的策略，可能直接发出，也可能先存成草稿等人批准——返回值会说明是哪一种。',
+    effect: 'read', input: z.object({ content: z.string().min(1).max(2000), reason: z.string().min(1).max(500) }),
+    async run(raw) {
+      const input = raw as { content: string; reason: string };
+      const result = await drafts.submit({ kind: 'dynamic', content: input.content, reason: input.reason });
+      if (!result.ok) return { refused: result.reason };
+      return result.posted ? { posted: result.posted, note: '已直接发出' } : { draft: publicDraft(result.draft) };
+    },
+  });
+
+  registry.register({
+    name: 'bilibili.delete_post', description: '撤回自己发过的评论或动态。只在说错了、或想纠正时才用；需要平台返回的 rpid / dynamicId。',
+    effect: 'read', input: z.object({
+      kind: z.enum(['comment', 'dynamic']),
+      bvid: VIDEO.optional(),
+      rpid: z.number().int().positive().optional(),
+      dynamicId: z.string().min(1).max(40).optional(),
+    }),
+    async run(raw, { signal }) {
+      const input = raw as { kind: 'comment' | 'dynamic'; bvid?: string; rpid?: number; dynamicId?: string };
+      if (input.kind === 'comment') {
+        if (!input.bvid || !input.rpid) throw new Error('撤回评论需要 bvid 与 rpid');
+        const meta = await video.meta(input.bvid, 1, signal);
+        await messages.deleteComment({ aid: meta.aid, rpid: input.rpid }, signal);
+        return { deleted: 'comment', rpid: input.rpid };
+      }
+      if (!input.dynamicId) throw new Error('撤回动态需要 dynamicId');
+      await messages.deleteDynamic({ dynamicId: input.dynamicId }, signal);
+      return { deleted: 'dynamic', dynamicId: input.dynamicId };
+    },
+  });
+
+  registry.register({
+    name: 'bilibili.quotas', description: '查今天还能发几条评论、几条动态，以及有没有在等人批准的草稿。开口前先看一眼，别把话说满。',
+    effect: 'read', input: z.object({}),
+    async run() {
+      return {
+        comment: { used: drafts.used('comment'), remaining: drafts.remaining('comment'), policy: config.commentPolicy },
+        dynamic: { used: drafts.used('dynamic'), remaining: drafts.remaining('dynamic'), policy: config.dynamicPolicy },
+        pendingDrafts: drafts.pending().map(publicDraft),
+      };
+    },
+  });
+}
+
+/** 看视频：热度选点 → 取流 → 截图。拆出来是因为它比别的工具长得多。 */
+function registerVideoTool(registry: CapabilityRegistrar, deps: BilibiliToolsDeps, helpers: {
+  video: BilibiliVideo; guard: (meta: { ownerMid: string }) => void;
+}): void {
+  const { video, guard } = helpers;
+  const { config, deps: _unused } = { config: deps.config, deps };
+  void _unused;
   registry.register({
     name: 'bilibili.video', description: '看一个 B 站视频：用高能进度条找出大家最在意的地方，在播放页截几张图，让你直接看图说清它讲了什么。返回截图地址和时长，图直接进你的上下文。',
     effect: 'read', input: z.object({ bvid: VIDEO, page: Page, frames: z.number().int().min(1).max(8).optional() }),
@@ -60,52 +141,7 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
     },
   });
 
-  registry.register({
-    name: 'bilibili.comments', description: '读一个视频的评论区（按热度或时间），看大家在聊什么、谁说的话值得回应。',
-    effect: 'read', input: z.object({ bvid: VIDEO, limit: z.number().int().min(1).max(20).default(10), sort: z.enum(['time', 'hot']).default('hot') }),
-    async run(raw, { signal }) {
-      const input = raw as { bvid: string; limit: number; sort: 'time' | 'hot' };
-      const meta = await video.meta(input.bvid, 1, signal);
-      guard(meta);
-      const list = await messages.comments({ aid: meta.aid, bvid: meta.bvid, limit: input.limit, sort: input.sort }, signal);
-      return { video: { bvid: meta.bvid, title: meta.title }, comments: list };
-    },
-  });
 
-  registry.register({
-    name: 'bilibili.draft_comment', description: '想对某个视频（或某条评论）说点什么时，先写成草稿交给人看：说清楚为什么想回这条、你想说什么。批准前不会发出去。',
-    effect: 'read', input: z.object({ bvid: VIDEO, message: z.string().min(1).max(1000), reason: z.string().min(1).max(500), replyToRpid: z.number().int().positive().optional() }),
-    async run(raw, { signal }) {
-      const input = raw as { bvid: string; message: string; reason: string; replyToRpid?: number };
-      const meta = await video.meta(input.bvid, 1, signal);
-      guard(meta);
-      const result = drafts.submit({ kind: 'comment', content: input.message, reason: input.reason, targetBvid: meta.bvid, targetAid: meta.aid,
-        ...(input.replyToRpid ? { parentRpid: input.replyToRpid, rootRpid: input.replyToRpid } : {}) });
-      return result.ok ? { draft: publicDraft(result.draft) } : { refused: result.reason };
-    },
-  });
-
-  registry.register({
-    name: 'bilibili.draft_dynamic', description: '想发一条动态时先写草稿交给人看：一句话说你在做什么、为什么值得说。批准前不会发出去。',
-    effect: 'read', input: z.object({ content: z.string().min(1).max(2000), reason: z.string().min(1).max(500) }),
-    async run(raw) {
-      const input = raw as { content: string; reason: string };
-      const result = drafts.submit({ kind: 'dynamic', content: input.content, reason: input.reason });
-      return result.ok ? { draft: publicDraft(result.draft) } : { refused: result.reason };
-    },
-  });
-
-  registry.register({
-    name: 'bilibili.quotas', description: '查今天还能发几条评论、几条动态，以及有没有在等人批准的草稿。开口前先看一眼，别把话说满。',
-    effect: 'read', input: z.object({}),
-    async run() {
-      return {
-        comment: { used: drafts.used('comment'), remaining: drafts.remaining('comment'), policy: config.commentPolicy },
-        dynamic: { used: drafts.used('dynamic'), remaining: drafts.remaining('dynamic'), policy: config.dynamicPolicy },
-        pendingDrafts: drafts.pending().map(publicDraft),
-      };
-    },
-  });
 }
 
 /** 给模型看的草稿视图：没有 cookie、没有内部字段之外的东西。 */

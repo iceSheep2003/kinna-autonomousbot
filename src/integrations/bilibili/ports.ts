@@ -41,6 +41,9 @@ export interface BilibiliMessages {
   comments(input: { aid: number; bvid: string; limit: number; sort: 'time' | 'hot' }, signal: AbortSignal): Promise<Array<{ rpid: number; text: string; user: string; likes: number; replies: number; at: number }>>;
   postComment(input: { aid: number; bvid: string; message: string; rootRpid?: number; parentRpid?: number }, signal: AbortSignal): Promise<{ rpid: number }>;
   postDynamic(input: { content: string }, signal: AbortSignal): Promise<{ dynamicId: string }>;
+  /** 撤回自己发的评论/动态。只用于纠正错误，不是日常操作。 */
+  deleteComment(input: { aid: number; rpid: number }, signal: AbortSignal): Promise<void>;
+  deleteDynamic(input: { dynamicId: string }, signal: AbortSignal): Promise<void>;
 }
 
 /**

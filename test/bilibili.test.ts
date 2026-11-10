@@ -76,7 +76,7 @@ test('平台返回码翻译成人话', () => {
 
 test('默认 draft 策略：只建草稿，不发出任何东西', async () => {
   const f = queue();
-  const result = f.queue.submit({ kind: 'comment', content: '这一期讲得很清楚，谢谢', reason: '看完觉得有用', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 });
+  const result = await f.queue.submit({ kind: 'comment', content: '这一期讲得很清楚，谢谢', reason: '看完觉得有用', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 });
   assert.equal(result.ok, true);
   assert.equal(f.messages.posted.length, 0);
   const draft = f.queue.get((result as { draft: Draft }).draft.id)!;
@@ -84,16 +84,45 @@ test('默认 draft 策略：只建草稿，不发出任何东西', async () => {
   assert.equal(draft.expiresAt, NOW + config().draftTtlMs);
 });
 
-test('off 策略连草稿都不建', () => {
+test('off 策略连草稿都不建', async () => {
   const f = queue({ config: config({ commentPolicy: 'off' }) });
-  const result = f.queue.submit({ kind: 'comment', content: '这句话我想说一下', reason: '想回', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 });
+  const result = await f.queue.submit({ kind: 'comment', content: '这句话我想说一下', reason: '想回', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 });
   assert.equal(result.ok, false);
+  assert.equal(f.queue.pending().length, 0);
+});
+
+test('direct 策略：校验通过就直接发出，不进草稿队列，回执带平台 id', async () => {
+  const f = queue({ config: config({ commentPolicy: 'direct', dynamicPolicy: 'direct' }) });
+  const result = await f.queue.submit({ kind: 'comment', content: '这一期的画面剪得很舒服', reason: '看完想说', targetBvid: 'BV1xx4y1x7xx', targetAid: 7 }) as unknown as { ok: true; posted: string };
+  assert.equal(f.messages.posted.length, 1);
+  assert.equal(result.posted, '9001');
+  assert.equal(f.queue.pending().length, 0, 'direct 不应留下待批草稿');
+});
+
+test('direct 策略也要过正文规则与每日额度，不是「不检查」', async () => {
+  const f = queue({ config: config({ dynamicPolicy: 'direct', maxPostsPerDay: 1 }) });
+  const bad = await f.queue.submit({ kind: 'dynamic', content: '私聊我', reason: 'r' });
+  assert.equal(bad.ok, false);
+  assert.equal(f.messages.posted.length, 0);
+  const first = await f.queue.submit({ kind: 'dynamic', content: '今天看完了一本书', reason: 'r' });
+  assert.equal(first.ok, true);
+  const second = await f.queue.submit({ kind: 'dynamic', content: '还想再说一句', reason: 'r' });
+  assert.equal(second.ok, false);
+  assert.equal(f.messages.posted.length, 1);
+});
+
+test('direct 发送失败时如实返回失败原因，不留下「待批」假象', async () => {
+  const failing = messages({ postDynamic: async () => { throw new Error('B 站拒绝：-509'); } });
+  const f = queue({ config: config({ dynamicPolicy: 'direct' }), messages: failing });
+  const result = await f.queue.submit({ kind: 'dynamic', content: '这句话发不出去', reason: 'r' });
+  assert.equal(result.ok, false);
+  assert.match((result as { reason: string }).reason, /-509/);
   assert.equal(f.queue.pending().length, 0);
 });
 
 test('批准后才会真正发出，回执写回草稿并扣当天额度', async () => {
   const f = queue();
-  const draft = (f.queue.submit({ kind: 'comment', content: '这段我反复看了两遍', reason: '想回一句', targetBvid: 'BV1xx4y1x7xx', targetAid: 77 }) as { draft: Draft }).draft;
+  const draft = (await f.queue.submit({ kind: 'comment', content: '这段我反复看了两遍', reason: '想回一句', targetBvid: 'BV1xx4y1x7xx', targetAid: 77 }) as unknown as { draft: Draft }).draft;
   const result = await f.queue.approve(draft.id, { by: 'owner' });
   assert.equal(result.ok, true);
   assert.equal(f.messages.posted.length, 1);
@@ -106,7 +135,7 @@ test('批准后才会真正发出，回执写回草稿并扣当天额度', async
 
 test('重复批准同一草稿不会发第二遍', async () => {
   const f = queue();
-  const draft = (f.queue.submit({ kind: 'dynamic', content: '今天把楼下的猫拍到了', reason: '值得说' }) as { draft: Draft }).draft;
+  const draft = (await f.queue.submit({ kind: 'dynamic', content: '今天把楼下的猫拍到了', reason: '值得说' }) as unknown as { draft: Draft }).draft;
   assert.equal((await f.queue.approve(draft.id)).ok, true);
   const second = await f.queue.approve(draft.id);
   assert.equal(second.ok, false);
@@ -115,9 +144,9 @@ test('重复批准同一草稿不会发第二遍', async () => {
 
 test('每天额度用完就发不出去，草稿还在但不批准', async () => {
   const f = queue({ config: config({ maxPostsPerDay: 1 }) });
-  const first = (f.queue.submit({ kind: 'comment', content: '第一条评论内容', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as { draft: Draft }).draft;
+  const first = (await f.queue.submit({ kind: 'comment', content: '第一条评论内容', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as unknown as { draft: Draft }).draft;
   await f.queue.approve(first.id);
-  const second = f.queue.submit({ kind: 'comment', content: '第二条评论内容', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 });
+  const second = await f.queue.submit({ kind: 'comment', content: '第二条评论内容', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 });
   assert.equal(second.ok, false);
   assert.equal(f.queue.remaining('comment'), 0);
 });
@@ -125,7 +154,7 @@ test('每天额度用完就发不出去，草稿还在但不批准', async () =>
 test('过期草稿不能被批准，过期会被标掉', async () => {
   let now = NOW;
   const f = queue({ now: () => now });
-  const draft = (f.queue.submit({ kind: 'comment', content: '深夜想说的那句话', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as { draft: Draft }).draft;
+  const draft = (await f.queue.submit({ kind: 'comment', content: '深夜想说的那句话', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as unknown as { draft: Draft }).draft;
   now = NOW + config().draftTtlMs + 1;
   assert.equal(canApprove(f.queue.get(draft.id), now).ok, false);
   assert.equal(f.queue.expire(), 1);
@@ -136,7 +165,7 @@ test('过期草稿不能被批准，过期会被标掉', async () => {
 test('发送失败不扣额度，草稿保留原因，不自动重发', async () => {
   const failing = messages({ postComment: async () => { throw new Error('B 站拒绝：评论区已关闭'); } });
   const f = queue({ messages: failing });
-  const draft = (f.queue.submit({ kind: 'comment', content: '想在评论区说一句', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as { draft: Draft }).draft;
+  const draft = (await f.queue.submit({ kind: 'comment', content: '想在评论区说一句', reason: 'r', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as unknown as { draft: Draft }).draft;
   const result = await f.queue.approve(draft.id);
   assert.equal(result.ok, false);
   assert.match(result.reason ?? '', /评论区已关闭/);
@@ -144,9 +173,9 @@ test('发送失败不扣额度，草稿保留原因，不自动重发', async ()
   assert.match(f.queue.get(draft.id)?.decisionNote ?? '', /评论区已关闭/);
 });
 
-test('拒绝的草稿不会再被批准', () => {
+test('拒绝的草稿不会再被批准', async () => {
   const f = queue();
-  const draft = (f.queue.submit({ kind: 'dynamic', content: '随便说点什么吧', reason: 'r' }) as { draft: Draft }).draft;
+  const draft = (await f.queue.submit({ kind: 'dynamic', content: '随便说点什么吧', reason: 'r' }) as unknown as { draft: Draft }).draft;
   assert.equal(f.queue.reject(draft.id, { note: '太随意' }).ok, true);
   assert.equal(f.queue.get(draft.id)?.status, 'rejected');
   assert.equal(canApprove(f.queue.get(draft.id), NOW).ok, false);
@@ -268,4 +297,25 @@ test('没有图时 user content 仍是字符串，避免改变纯文本请求的
     const user = sent.messages.find((message: { role: string }) => message.role === 'user');
     assert.equal(typeof user.content, 'string');
   } finally { globalThis.fetch = original; }
+});
+
+test('撤回工具：按 bvid 找回 aid 再删评论；缺参数时直接拒绝而不是乱删', async () => {
+  const { CapabilityRegistry } = await import('../src/capabilities/registry.js');
+  const registry = new CapabilityRegistry({ get: () => undefined, save() {} } as never);
+  const f = queue();
+  const deleted: Array<{ kind: string; id: number | string }> = [];
+  registerBilibiliTools(registry as never, {
+    config: config(), drafts: f.queue,
+    video: { meta: async () => ({ bvid: 'BV1xx4y1x7xx', aid: 42, cid: 1, title: 't', ownerMid: '9', ownerName: 'u', durationSeconds: 60, desc: '', pages: [] }) },
+    messages: { ...f.messages,
+      deleteComment: async (input: { rpid: number }) => { deleted.push({ kind: 'comment', id: input.rpid }); },
+      deleteDynamic: async (input: { dynamicId: string }) => { deleted.push({ kind: 'dynamic', id: input.dynamicId }); } },
+  });
+  assert.ok(registry.catalog(['bilibili.delete_post']).length === 1, '删除工具应已注册');
+  await assert.rejects(async () => registry.invoke({ operationId: 'op-1', name: 'bilibili.delete_post',
+    input: { kind: 'comment', rpid: 5 }, allowed: ['bilibili.delete_post'], now: Date.now() }), /bvid/);
+  const result = await registry.invoke({ operationId: 'op-2', name: 'bilibili.delete_post',
+    input: { kind: 'comment', bvid: 'BV1xx4y1x7xx', rpid: 5 }, allowed: ['bilibili.delete_post'], now: Date.now() });
+  assert.deepEqual(result, { deleted: 'comment', rpid: 5 });
+  assert.deepEqual(deleted, [{ kind: 'comment', id: 5 }]);
 });

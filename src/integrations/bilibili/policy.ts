@@ -34,8 +34,9 @@ export function canReadVideo(ownerMid: string, allowedMids: readonly string[]): 
   return allowedMids.includes(ownerMid) ? { ok: true } : { ok: false, reason: `这个 UP 主(${ownerMid})不在读取白名单里` };
 }
 
+export type PostPolicy = 'off' | 'draft' | 'direct';
 export interface DecideInput {
-  policy: 'off' | 'draft' | 'on';
+  policy: PostPolicy;
   /** 当前批次的评论/动态是否 enabled；关掉后连草稿都不写。 */
   enabled: boolean;
 }
@@ -43,13 +44,16 @@ export interface DecideInput {
 /**
  * 决定一次公开动作现在能走到哪一步：
  * - off：直接拒绝，连草稿都不建；
- * - draft：建草稿，等 owner 批准（默认）；
- * - on：仍然建草稿，但草稿可以「一次批准」后由批准接口立即发出。
+ * - draft：只建草稿，等人批准后再发；
+ * - direct：正文与额度校验通过后直接发出，不建草稿。
+ *
+ * 注意 direct 仍然要过 `checkContent`（长度、空白、个人信息）与每日额度，
+ * 「直接发」不等于「不检查」。
  */
-export function admitPost(kind: PostKind, input: DecideInput): { stage: 'refuse' } | { stage: 'draft'; policy: 'draft' | 'on' } {
-  if (!input.enabled || input.policy === 'off') return { stage: 'refuse' };
+export function admitPost(kind: PostKind, input: DecideInput): { stage: 'refuse' } | { stage: 'draft' | 'direct' } {
   void kind;
-  return { stage: 'draft', policy: input.policy };
+  if (!input.enabled || input.policy === 'off') return { stage: 'refuse' };
+  return { stage: input.policy === 'direct' ? 'direct' : 'draft' };
 }
 
 /** 今天还能不能发。返回还要发的额度，0 表示用完了。 */

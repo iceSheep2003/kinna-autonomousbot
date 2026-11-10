@@ -141,9 +141,10 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
 - `bilibili.video`：取 **playurl 的 DASH 流**，在本地最小页面里用无头浏览器 seek 到选好的时间点并截图；选点来自**弹幕的时间分布**（观众在哪些秒有反应），在每个热点**前 4 秒**取帧，弹幕太少（<20 条）时退回均匀采样。截图直接作为图片交给 DeepSeek 看（本地未配公网地址时内联 data URL，配了就给 URL 让它自己下载）；图片只进 user 消息。
 - 为什么不在 B 站播放页截图：播放页有广告、弹幕层、风控，选择器一变就挂，本机实测无头打开播放页还会卡死。自己渲染 `playurl` 的流更稳、画面干净（没有弹幕遮挡）。
 - `bilibili.comments`：读一个视频的评论区（按热度或时间），包括别人对你视频的评论。配置 `BILIBILI_MID` 后还会轮询自己视频下的新评论，送进对应视频的场景会话。
-- `bilibili.draft_comment` / `bilibili.draft_dynamic`：**只出草稿**。模型没有任何路径能自己把内容发到公开平台上；草稿存在本地库，带过期时间（默认 24h）。
-- 批准：只有持 `API_TOKEN` 的人能调 `POST /v1/bilibili/drafts/:id/approve`。真正发出还要过当天额度（`maxPostsPerDay`），失败不扣额度、不自动重发。
-- `commentPolicy` / `dynamicPolicy`：`off` 连草稿都不建，`draft`（默认）出草稿等人批，`on` 同样要显式批准请求。
+- `bilibili.draft_comment` / `bilibili.draft_dynamic`：回复评论、发纯文本动态。**已实测可用**：真实发出过一条评论（rpid `319757565265`）和一条动态（id `1268939446139486217`），验证后已删除。
+- `commentPolicy` / `dynamicPolicy`：`off` 不发；`draft`（默认）先出草稿等人批准；`direct` 校验通过后直接发出。两条路都要过正文规则（长度、空白、个人信息）与每日额度。
+- 批准与撤回：`POST /v1/bilibili/drafts/:id/approve` 只有持 `API_TOKEN` 的人能调；`bilibili.delete_post` 可撤回自己发过的评论/动态。
+- 已实测的写接口：`dynamic_svr/v1/dynamic_svr/create`（发动态）、`x/v2/reply/add`（发评论）、`x/v2/reply/del` 与 `rm_dynamic`（删除）。
 
 ### 登录与托管
 

@@ -58,6 +58,21 @@ export class BilibiliApi implements BilibiliVideo, BilibiliMessages {
     return { rpid: Number(data.rpid ?? data.rpid_str ?? 0) };
   }
 
+  /** 删除自己发的评论。 */
+  async deleteComment(input: { aid: number; rpid: number }, signal: AbortSignal): Promise<void> {
+    await this.transport.request({
+      method: 'POST', path: '/x/v2/reply/del', csrf: true, signal,
+      form: { type: 1, oid: input.aid, rpid: input.rpid },
+    });
+  }
+
+  async deleteDynamic(input: { dynamicId: string }, signal: AbortSignal): Promise<void> {
+    await this.transport.request({
+      method: 'POST', path: '/dynamic_svr/v1/dynamic_svr/rm_dynamic', base: 'vc', csrf: true, signal,
+      form: { dynamic_id: input.dynamicId },
+    });
+  }
+
   /** 纯文本动态：老接口最简单、参数最少，不依赖复杂的 dyn_req 结构。 */
   async postDynamic(input: { content: string }, signal: AbortSignal): Promise<{ dynamicId: string }> {
     const data = await this.transport.request<{ dynamic_id?: string | number; dynamic_id_str?: string }>({

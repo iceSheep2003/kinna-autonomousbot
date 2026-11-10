@@ -5,10 +5,10 @@ export const BilibiliConfigSchema = z.object({
   enabled: z.boolean().default(false),
   /** 只允许读这些 UP 主的视频（mid）。空表示任何视频都能读。 */
   allowedMids: z.array(z.string().regex(/^\d{1,20}$/)).default([]),
-  /** 发评论：off = 不发；draft = 只存草稿等人批；on = 批准后自动发。 */
-  commentPolicy: z.enum(['off', 'draft', 'on']).default('draft'),
-  /** 发动态：同上。动态是公开发布，默认同样先出草稿。 */
-  dynamicPolicy: z.enum(['off', 'draft', 'on']).default('draft'),
+  /** 发评论：off = 不发；draft = 只存草稿等人批；direct = 校验通过就直接发。 */
+  commentPolicy: z.enum(['off', 'draft', 'direct']).default('draft'),
+  /** 发动态：同上。 */
+  dynamicPolicy: z.enum(['off', 'draft', 'direct']).default('draft'),
   /** 一天最多真正发出多少条评论/动态，防止一次回放把话说完。 */
   maxPostsPerDay: z.number().int().min(0).max(50).default(5),
   /** 是否启用无头浏览器读视频（需要 playwright）；关掉后只能读评论、出草稿。 */
