@@ -148,8 +148,17 @@ export interface MemoryContextItem {
   id: string; fact: string; type: FactType; personaHint: string;
   mentionPolicy: MentionPolicy; confidence: ConfidenceLabel; subject: string;
 }
+/**
+ * 分成两层给出：通用的（owner）与只属于当前场景的。
+ *
+ * 为什么分开列：不分开，模型会把「这个群里他妹妹刚考上」当成「他妹妹刚考上」，
+ * 下次在别的场合也提。层级不只要在存储上成立，还要在提示词里看得见。
+ */
 export interface MemoryContext {
-  items: MemoryContextItem[];
+  /** 所有场合都适用的（owner 层）。 */
+  general: MemoryContextItem[];
+  /** 只在这个场景成立的。 */
+  scoped: MemoryContextItem[];
   usageRule: string;
   explain: string[];
   /** 因预算或过长被整条跳过的记录数；不做截断前半句。 */

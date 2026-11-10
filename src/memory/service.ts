@@ -14,6 +14,7 @@ import type { Memory, MemoryContext, MemoryProposal, MemoryWriteOutcome,
   RecallRequest, RetrievalHit } from './types.js';
 import { CANDIDATE_CONFIDENCE, GROUP_SUBJECT, MemoryProposalSchema } from './types.js';
 import { readableRecords } from './access.js';
+import { parseScope, formatScope } from './scope.js';
 import { rankMemories, type RankingWeights } from './ranking.js';
 import { DEFAULT_MEMORY_BUDGET_CHARS, renderMemoryContext } from './render.js';
 import { contradiction, decideDedupe } from './dedupe.js';
@@ -22,7 +23,7 @@ export interface MemoryServiceOptions {
   clock?: () => number;
   weights?: Partial<RankingWeights>;
   budgetChars?: number;
-  /** 默认 scope，缺省表示不按会话隔离。 */
+  /** 默认 scope（`owner` / `group:<id>` / `feature:<id>`）；缺省视为 owner。 */
   scope?: string;
   /** 候选池上限，防止一次把所有记忆都算一遍。 */
   pool?: number;
@@ -36,17 +37,21 @@ export class MemoryService implements MemoryView {
     this.options = options;
   }
   private now(): number { return this.options.clock?.() ?? Date.now(); }
-  private request(query: string, limit: number): RecallRequest {
-    return { query, limit, now: this.now(), scope: this.options.scope };
+  private request(query: string, limit: number, scope?: string): RecallRequest {
+    return { query, limit, now: this.now(), scope: formatScope(parseScope(scope ?? this.options.scope)) };
   }
 
-  /** 兼容旧调用方：只拿事实数组，不带提及策略。新上下文请用 context。 */
-  recall(query: string, limit: number): Memory[] {
-    return this.retrieve(this.request(query, limit)).map(hit => hit.memory);
+  /**
+   * 兼容旧调用方：只拿事实数组，不带提及策略。新上下文请用 context。
+   * `scope` 不传时用服务默认值（owner）；传 `group:xxx` 时能读到 owner + 这个群。
+   */
+  recall(query: string, limit: number, scope?: string): Memory[] {
+    return this.retrieve(this.request(query, limit, scope)).map(hit => hit.memory);
   }
   context(request: RecallRequest): MemoryContext {
     const budget = request.budgetChars ?? this.options.budgetChars ?? DEFAULT_MEMORY_BUDGET_CHARS;
-    return renderMemoryContext(this.retrieve(request), budget);
+    // 进来的 scope 可能是脏数据；在这里规整一次，后续判断都按规范形式。
+    return renderMemoryContext(this.retrieve({ ...request, scope: formatScope(parseScope(request.scope)) }), budget);
   }
   /** C1：决策之前的小量预热，只给两三条人和群背景。 */
   preheat(request: RecallRequest): MemoryContext {
@@ -58,10 +63,17 @@ export class MemoryService implements MemoryView {
 
   private retrieve(request: RecallRequest): RetrievalHit[] {
     const rows = readableRecords(this.pool(request), request);
-    const hits = rankMemories(rows, {
-      now: request.now, query: request.query, limit: request.limit,
+    // 分池：通用层（owner）与场景层各自排序后再合并，避免一层被另一层挤光。
+    const general = rows.filter(memory => (memory.scope ?? 'owner') === 'owner');
+    const scoped = rows.filter(memory => (memory.scope ?? 'owner') !== 'owner');
+    const generalQuota = general.length === 0 ? 0 : Math.max(1, Math.floor(request.limit * 0.4));
+    const rank = (subset: typeof rows, limit: number) => limit <= 0 ? [] : rankMemories(subset, {
+      now: request.now, query: request.query, limit,
       subjectUserId: request.subjectUserId, weights: this.options.weights,
     });
+    const hits = [...rank(general, generalQuota), ...rank(scoped, request.limit - generalQuota)]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, request.limit);
     this.reinforce(hits, request.now);
     return hits;
   }

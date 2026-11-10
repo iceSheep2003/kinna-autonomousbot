@@ -5,7 +5,7 @@ import type { CapabilityAccess } from '../capabilities/ports.js';
 import { UncertainOperation } from '../capabilities/ports.js';
 import { SOCIAL_LINES, personaText, type Personality } from '../shared/persona.js';
 import type { SubjectView } from '../subject/ports.js';
-import type { ExperienceLog } from '../memory/ports.js';
+import type { ExperienceLog, MemoryView } from '../memory/ports.js';
 import type { SceneRequests, SceneSessionRepository } from './ports.js';
 import { SceneDecisionSchema, type SceneDecision, type SceneDescriptor, type SceneSessionState, type SceneStep } from './scene-types.js';
 
@@ -43,6 +43,11 @@ export interface SceneDependencies {
   limits: ContextLimits;
   /** 与 self 同一份人格；undefined 表示关掉 personal 倾向。 */
   personality?: Personality;
+  /**
+   * 记忆读取。场景能读 owner + 本场景两层，读不到别的场景。
+   * 不配置时不注入记忆——宁可让场景少知道点，也不让它越界。
+   */
+  memory?: MemoryView;
 }
 
 type ToolDecision = Extract<SceneDecision, { type: 'tool' }>;
@@ -63,10 +68,12 @@ export class SceneSessions {
   private readonly boundaries: Boundaries;
   private readonly limits: ContextLimits;
   private readonly personality?: Personality;
+  private readonly memory?: MemoryView;
   constructor(deps: SceneDependencies) {
     this.repository = deps.repository; this.experience = deps.experience; this.subject = deps.subject;
     this.model = deps.model; this.capabilities = deps.capabilities; this.requests = deps.requests;
     this.boundaries = deps.boundaries; this.limits = deps.limits; this.personality = deps.personality;
+    this.memory = deps.memory;
   }
   receive(scene: SceneDescriptor, kind: string, data: unknown, now: number): void {
     const old = this.repository.get(scene.id);
@@ -109,7 +116,13 @@ export class SceneSessions {
   }
   private context(frame: LoadFrame) {
     const subject = this.subject.read();
+    const query = JSON.stringify(frame.observations).slice(0, 3000);
     return { now: frame.now, session: frame.state, subject: { identity: subject.identity, direction: subject.direction, affect: subject.affect },
+      // 场景记忆：owner 层（所有场合适用）+ 这个群/这个环境的。scope 由环境与 id 决定。
+      ...(this.memory ? { memories: this.memory.context?.({
+        query, limit: this.limits.memories, now: frame.now,
+        scope: `${frame.state.environment === 'qq' ? 'group' : 'feature'}:${frame.state.scope.id ?? frame.id}`,
+      }) } : {}),
       observations: frame.observations, recent: this.repository.recentDecisions(frame.id, this.limits.recentTurns),
       capabilities: this.capabilities.catalog(frame.allowed) };
   }

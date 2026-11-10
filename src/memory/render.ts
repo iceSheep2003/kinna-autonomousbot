@@ -37,17 +37,31 @@ function toItem(hit: RetrievalHit): MemoryContextItem {
   };
 }
 
+/** 给两层各留多少预算：通用层是背景，场景层是这次对话要用的，所以场景略多。 */
+const GENERAL_SHARE = 0.4;
+
+const isGeneral = (memory: { scope?: string }): boolean => (memory.scope ?? 'owner') === 'owner';
+
 export function renderMemoryContext(hits: readonly RetrievalHit[], budgetChars = DEFAULT_MEMORY_BUDGET_CHARS): MemoryContext {
-  const items: MemoryContextItem[] = [];
-  let used = 0;
+  const generalBudget = Math.floor(budgetChars * GENERAL_SHARE);
+  const general: MemoryContextItem[] = [];
+  const scoped: MemoryContextItem[] = [];
+  let generalUsed = 0;
+  let scopedUsed = 0;
   let omitted = 0;
   for (const hit of hits) {
+    // 超长整条跳过：截断的前半句最容易被模型当成完整事实。
     if (hit.memory.content.length > FULL_FACT_MAX_CHARS) { omitted++; continue; }
     const item = toItem(hit);
     const size = JSON.stringify(item).length;
-    if (used + size > budgetChars) { omitted++; continue; }
-    items.push(item);
-    used += size;
+    const inGeneral = isGeneral(hit.memory);
+    if (inGeneral) {
+      if (generalUsed + size > generalBudget) { omitted++; continue; }
+      general.push(item); generalUsed += size;
+      continue;
+    }
+    if (scopedUsed + size > budgetChars - generalBudget) { omitted++; continue; }
+    scoped.push(item); scopedUsed += size;
   }
-  return { items, usageRule: MEMORY_USAGE_RULE, explain: explainHits(hits), omitted };
+  return { general, scoped, usageRule: MEMORY_USAGE_RULE, explain: explainHits(hits), omitted };
 }

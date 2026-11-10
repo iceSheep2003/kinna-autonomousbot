@@ -29,7 +29,8 @@ export interface ReflectionRepository { save(reflection: Reflection): void; get(
  * 不新增 LLM 调用。旧的最小实现只需提供 recall。
  */
 export interface MemoryView {
-  recall(query: string, limit: number): Memory[];
+  /** scope 不传时用服务默认（owner）；传 `group:xxx` 时能读到 owner + 这个群。 */
+  recall(query: string, limit: number, scope?: string): Memory[];
   context?(request: RecallRequest): MemoryContext;
   preheat?(request: RecallRequest): MemoryContext;
   related?(request: RecallRequest): MemoryContext;

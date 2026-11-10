@@ -7,11 +7,13 @@
  * 是两件事，不能混用。
  */
 import { GROUP_SUBJECT, type Memory, type RecallRequest } from './types.js';
+import { parseScope, scopeReadable } from './scope.js';
 
 export function isReadable(memory: Memory, request: RecallRequest): boolean {
   if (!statusAllows(memory, request)) return false;
   if (memory.expiresAt !== undefined && memory.expiresAt <= request.now) return false;
-  if (memory.scope && request.scope && memory.scope !== request.scope) return false;
+  // 层级作用域：本次请求能读到 owner + 当前场景；读不到别的场景。
+  if (!scopeReadable(memory.scope, parseScope(request.scope))) return false;
   return visible(memory, request);
 }
 

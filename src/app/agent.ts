@@ -126,6 +126,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const model = new BudgetedModel(provider, r.budget, boundaries.maxModelCallsPerHour, worker.clock);
   scenes = new SceneSessions({
     repository: r.scenes, experience, subject, model, capabilities, boundaries, limits, personality,
+    // 场景记忆：owner + 本群（或本环境），别的群读不到。
+    memory,
     requests: {
       continue: (id, now) => { r.jobs.enqueue('scene', `scene:${id}`, { sessionId: id }, now); },
       reflect: (request, now) => inbox.notify('scene.reflection_requested', request, now),
