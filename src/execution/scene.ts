@@ -4,6 +4,8 @@ import type { Commit } from '../shared/transaction.js';
 import type { CapabilityAccess } from '../capabilities/ports.js';
 import { UncertainOperation } from '../capabilities/ports.js';
 import { SOCIAL_LINES, personaText, type Personality } from '../shared/persona.js';
+import { COMPACT_EVERY, renderSceneState, shouldCompact, type SceneState } from './scene-compaction.js';
+import type { SceneCompactor } from './scene-compactor.js';
 import type { SubjectView } from '../subject/ports.js';
 import type { ExperienceLog, MemoryView } from '../memory/ports.js';
 import type { SceneRequests, SceneSessionRepository } from './ports.js';
@@ -48,6 +50,8 @@ export interface SceneDependencies {
    * 不配置时不注入记忆——宁可让场景少知道点，也不让它越界。
    */
   memory?: MemoryView;
+  /** 旧对话压缩器；不配置就不压缩（旧消息仍然只是被窗口挤出去）。 */
+  compactor?: SceneCompactor;
 }
 
 type ToolDecision = Extract<SceneDecision, { type: 'tool' }>;
@@ -69,11 +73,12 @@ export class SceneSessions {
   private readonly limits: ContextLimits;
   private readonly personality?: Personality;
   private readonly memory?: MemoryView;
+  private readonly compactor?: SceneCompactor;
   constructor(deps: SceneDependencies) {
     this.repository = deps.repository; this.experience = deps.experience; this.subject = deps.subject;
     this.model = deps.model; this.capabilities = deps.capabilities; this.requests = deps.requests;
     this.boundaries = deps.boundaries; this.limits = deps.limits; this.personality = deps.personality;
-    this.memory = deps.memory;
+    this.memory = deps.memory; this.compactor = deps.compactor;
   }
   receive(scene: SceneDescriptor, kind: string, data: unknown, now: number): void {
     const old = this.repository.get(scene.id);
@@ -83,8 +88,10 @@ export class SceneSessions {
     this.requests.continue(scene.id, now);
   }
   async prepare(stepId: string, id: string, now: number): Promise<Commit> {
-    const state = this.repository.get(id); if (!state) throw new Error('Unknown scene session');
+    const raw = this.repository.get(id); if (!raw) throw new Error('Unknown scene session');
     const source = `session:${id}`;
+    // 攒够一批旧消息就先压成现场状态；压不动不影响本轮（压缩失败只记日志）。
+    const state = await this.maybeCompact(raw, source, now);
     const observations = this.experience.read(state.cursor, this.limits.observations, source);
     if (!observations.length) return () => {};
     // 本地额度耗尽先停下来，不把普通执行问题自动升级成主体反思。
@@ -97,6 +104,30 @@ export class SceneSessions {
     if (step.decision.type === 'tool') return this.toolCommit(scoped, step.decision);
     return this.decisionCommit(scoped);
   }
+  /**
+   * 把攒下来的旧对话压成现场状态。
+   *
+   * 时机：距上次压缩又攒了 COMPACT_EVERY 条。压缩范围是「已有状态 + 这批新消息」，
+   * 产物仍是状态本身（不是累积原文），所以状态不会越压越大。
+   * 失败就跳过、保持原状态——压缩是优化，不该让这一轮对话停摆。
+   */
+  private async maybeCompact(state: SceneSessionState, source: string, now: number): Promise<SceneSessionState> {
+    if (!this.compactor || !shouldCompact(state.cursor, state.compactedThrough)) return state;
+    const fresh = this.experience.read(state.compactedThrough ?? 0, COMPACT_EVERY * 2, source);
+    if (fresh.length === 0) return state;
+    let next: SceneState;
+    try {
+      next = await this.compactor.compact({ prior: state.sceneState, rows: fresh });
+    } catch (error) {
+      this.experience.record(source, 'scene.compaction.failed', { error: String(error).slice(0, 200) }, now);
+      return state;
+    }
+    const saved: SceneSessionState = { ...state, compactedThrough: state.cursor, sceneState: next, updatedAt: now };
+    this.repository.save(saved);
+    this.experience.record(source, 'scene.compacted', { through: state.cursor, threads: next.activeThreads.length, loops: next.openLoops.length }, now);
+    return saved;
+  }
+
   private budgetCommit(state: SceneSessionState, source: string, now: number): Commit {
     return () => {
       this.repository.save({ ...state, steps: 0, cursor: state.cursor, updatedAt: now });
@@ -117,7 +148,10 @@ export class SceneSessions {
   private context(frame: LoadFrame) {
     const subject = this.subject.read();
     const query = JSON.stringify(frame.observations).slice(0, 3000);
+    // 超出窗口的旧对话已经压成现场状态：带上它，才接得上「刚才聊到哪」。
+    const prior = renderSceneState(frame.state.sceneState);
     return { now: frame.now, session: frame.state, subject: { identity: subject.identity, direction: subject.direction, affect: subject.affect },
+      ...(prior === '' ? {} : { earlier: prior }),
       // 场景记忆：owner 层（所有场合适用）+ 这个群/这个环境的。scope 由环境与 id 决定。
       ...(this.memory ? { memories: this.memory.context?.({
         query, limit: this.limits.memories, now: frame.now,

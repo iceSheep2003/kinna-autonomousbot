@@ -4,6 +4,7 @@ import { defaultContextLimits, type Boundaries, type ContextLimits } from '../sh
 import type { Repositories } from './repositories.js';
 import type { CapabilityRegistry } from '../capabilities/registry.js';
 import { allowFor } from '../capabilities/scenarios.js';
+import { ModelSceneCompactor } from '../execution/scene-compactor.js';
 import { SubjectService } from '../subject/service.js';
 import { GoalService } from '../subject/goals.js';
 import { AffectService } from '../subject/affect.js';
@@ -129,6 +130,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     repository: r.scenes, experience, subject, model, capabilities, boundaries, limits, personality,
     // 场景记忆：owner + 本群（或本环境），别的群读不到。
     memory,
+    // 旧对话压缩：攒够一批就压成现场状态，否则窗口外的消息直接丢。
+    compactor: new ModelSceneCompactor(model),
     requests: {
       continue: (id, now) => { r.jobs.enqueue('scene', `scene:${id}`, { sessionId: id }, now); },
       reflect: (request, now) => inbox.notify('scene.reflection_requested', request, now),
