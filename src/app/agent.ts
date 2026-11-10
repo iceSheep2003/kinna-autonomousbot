@@ -33,6 +33,7 @@ export interface AgentOptions {
   reflectionIntervalMs: number; dreamIntervalMs: number;
   dreamCheckIntervalMs?: number; dreamGate?: Partial<DreamGateConfig>;
   dreamOpportunities?: boolean; // 翻出的机会是否交给 self（不传为开启；对照/回滚时关掉）
+  todos?: () => import('../self/todos.js').SelfTodo[]; // 自己想做的事，注入 self 上下文
   /** 跨进程互斥由调用方注入；不传则只在进程内互斥。 */
   dreamLock?: DreamLock;
   contextLimits?: Partial<ContextLimits>;
@@ -131,7 +132,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   });
   const self = new SelfSession({
     model, repository: r.selfSession, inbox, personality,
-    context: new SelfContextBuilder({ subject, memory, executions, schedules: scheduler, inbox, session: r.selfSession, capabilities, boundaries, limits }),
+    context: new SelfContextBuilder({ subject, memory, executions, schedules: scheduler, inbox, session: r.selfSession, capabilities, boundaries, limits,
+      ...(options.todos ? { todos: options.todos } : {}) }),
     committer: new DecisionCommitter({ subject, executions, scheduler, reflections, jobs: r.jobs, capacity: boundaries.maxPendingJobs }),
   });
   const runner = new ExecutionRunner({ repository: r.execution, service: executions, model, capabilities, memory, experience, boundaries, limits });

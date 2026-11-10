@@ -21,6 +21,10 @@ import { BilibiliHttp } from './infrastructure/bilibili/client.js';
 import { BilibiliLogin } from './infrastructure/bilibili/login.js';
 import { SqliteSessionStore } from './infrastructure/sqlite/bilibili-session.js';
 import { SessionHost } from './app/bilibili-session.js';
+import { registerSelfTodoTools } from './self/todo-tools.js';
+import { SqliteSelfTodoStore } from './infrastructure/sqlite/self-todos.js';
+import { registerWebFetch } from './integrations/web-fetch.js';
+import { openTodos, TODO_CAP } from './self/todos.js';
 import { TodoBoard } from './integrations/bilibili/todo-board.js';
 import { SqliteTodoStore } from './infrastructure/sqlite/bilibili-todo.js';
 import { credentialsOf, sessionFromEnv } from './integrations/bilibili/session.js';
@@ -39,6 +43,8 @@ const store = new Store(databasePath);
 const repositories = sqliteRepositories(store);
 const capabilities = new CapabilityRegistry(repositories.operations);
 if (process.env.BRAVE_API_KEY) registerBraveSearch(capabilities, process.env.BRAVE_API_KEY);
+// 读网页正文：搜索摘要不够判断一篇值不值得转给别人。
+registerWebFetch(capabilities);
 const plugins = await loadPlugins(config.plugins, capabilities);
 if (config.qq) {
   if (plugins.some(plugin => plugin.name === 'qq')) throw new Error('QQ plugin already registered');
@@ -75,10 +81,16 @@ if (bilibiliConfig.enabled) {
   }));
 }
 const model = new OpenAICompatibleModel({ baseUrl: process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1', apiKey: LLM_API_KEY, model: LLM_MODEL, profiles: profilesFromEnv(process.env) });
-const agent = composeAgent(repositories, model, capabilities, { ...config, dreamLock: createDreamLock(resolve(process.env.DREAM_LOCK_PATH ?? 'data/dream.lock')) });
+const selfTodos = new SqliteSelfTodoStore(store);
+const agent = composeAgent(repositories, model, capabilities, { ...config,
+  dreamLock: createDreamLock(resolve(process.env.DREAM_LOCK_PATH ?? 'data/dream.lock')),
+  // 醒来能看到自己想做的几件事（只读 open 的，最多 5 条）。
+  todos: () => openTodos(selfTodos.list(TODO_CAP), 5) });
 const runtime = agent.runtime;
 registerMemory(capabilities, agent.memory, agent.experience);
 registerNotes(capabilities, agent.experience);
+// 自己想做的事：看到/听到什么就记一条，醒来能看到。
+registerSelfTodoTools(capabilities, { store: selfTodos });
 registerConversation(capabilities, agent.experience);
 capabilities.validate(config.boundaries.allowedTools, config.boundaries.allowedTools);
 runtime.start();

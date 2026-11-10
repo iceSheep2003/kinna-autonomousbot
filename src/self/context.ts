@@ -6,6 +6,7 @@ import type { ExecutionView } from '../execution/ports.js';
 import type { CapabilityAccess } from '../capabilities/ports.js';
 import type { Schedule } from '../runtime/types.js';
 import type { SelfInbox, SelfSessionRepository } from './ports.js';
+import type { SelfTodo } from './todos.js';
 
 export interface ContextDependencies {
   subject: SubjectView;
@@ -17,6 +18,8 @@ export interface ContextDependencies {
   capabilities: CapabilityAccess;
   boundaries: Boundaries;
   limits: ContextLimits;
+  /** 自己记下的待办；不配置时不注入。 */
+  todos?: () => SelfTodo[];
 }
 
 /** self 每轮只看到有界快照；会话永久存在不等于上下文无限增长。 */
@@ -30,10 +33,12 @@ export class SelfContextBuilder {
   private readonly capabilities: CapabilityAccess;
   private readonly boundaries: Boundaries;
   private readonly limits: ContextLimits;
+  private readonly todos?: () => SelfTodo[];
   constructor(deps: ContextDependencies) {
     this.subject = deps.subject; this.memory = deps.memory; this.executions = deps.executions;
     this.schedules = deps.schedules; this.inbox = deps.inbox; this.session = deps.session;
     this.capabilities = deps.capabilities; this.boundaries = deps.boundaries; this.limits = deps.limits;
+    this.todos = deps.todos;
   }
   build(trigger: unknown, previousAttemptError: string | undefined, now: number) {
     const cursor = this.session.cursor();
@@ -42,6 +47,8 @@ export class SelfContextBuilder {
     return { cursor, now, trigger, previousAttemptError, subject: this.subject.read(),
       goals: this.subject.goals(query, this.limits.goals), memories: this.memory.recall(query, this.limits.memories),
       observations, recent: this.session.recentDecisions(this.limits.recentTurns),
+      // 自己想做的事：只给开着的、最新的几条，避免清单一长就变成负担。
+      ...(this.todos ? { todos: this.todos().slice(0, 5) } : {}),
       capabilities: this.capabilities.catalog(this.boundaries.allowedTools), boundaries: this.boundaries,
       schedules: this.schedules.pending(this.limits.schedules), executions: this.executions.ongoing(this.limits.executions) };
   }
