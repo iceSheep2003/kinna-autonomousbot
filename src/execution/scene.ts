@@ -6,9 +6,22 @@ import { UncertainOperation } from '../capabilities/ports.js';
 import { SOCIAL_LINES, personaText, type Personality } from '../shared/persona.js';
 import { COMPACT_EVERY, renderSceneState, shouldCompact, type SceneState } from './scene-compaction.js';
 import type { SceneCompactor } from './scene-compactor.js';
-import { currentSpeaker, transcriptWindow, type TranscriptMessage } from './transcript.js';
+import { currentSpeaker, toTranscriptMessage, transcriptWindow, type TranscriptMessage } from './transcript.js';
 
 /** 场景需要的人物能力：观察与列出。 */
+/**
+ * 场景侧的情绪写入端口。
+ *
+ * 界面很窄：只接受「这一轮发生了什么」，具体怎么算 delta、怎么落库都在 subject 层。
+ * 场景不该知道五维、耦合、衰减这些东西——它只负责如实报出这一轮。
+ */
+export interface SceneAffect {
+  /** 记一轮：对方说了什么、我怎么回、是不是冲我来的。 */
+  observeTurn(input: { scope: string; userId: string; text: string; reply: string; atBot: boolean; question: boolean; now: number }): void;
+  /** 这个场景现在的情绪该怎么说成一句话；没有就返回空串。 */
+  narration?(scope: string): string;
+}
+
 export interface PeopleView {
   observe(data: unknown, now: number): void;
   roster?(limit: number): string;
@@ -72,6 +85,13 @@ export interface SceneDependencies {
   compactor?: SceneCompactor;
   /** 人物：观察消息里的人，注入时给认识的几张卡片。 */
   people?: PeopleView;
+  /**
+   * 情绪/好感度：**由场景写**，不是 self。
+   *
+   * 场景是唯一见过这一轮真实对话的地方（对方说了什么、我怎么回）。
+   * 让 self 写情绪的话，它只能凭 inbox 的碎片事后想象——那正是之前的接线错误。
+   */
+  affect?: SceneAffect;
   /** 对话记录字符预算，默认 6000。 */
   historyChars?: number;
 }
@@ -80,6 +100,8 @@ type ToolDecision = Extract<SceneDecision, { type: 'tool' }>;
 /** 一轮场景决策需要的全部输入；拆开后每个提交函数只读自己用到的部分。 */
 interface StepFrame {
   id: string; stepId: string; state: SceneSessionState; source: string; step: SceneStep; allowed: string[]; now: number;
+  /** 本轮的原始观察；记情绪时要从中取「对方说了什么、我回了什么」。 */
+  observations?: import('../memory/types.js').Experience[];
 }
 interface LoadFrame extends Omit<StepFrame, 'step'> { observations: import('../memory/types.js').Experience[] }
 
@@ -97,6 +119,7 @@ export class SceneSessions {
   private readonly memory?: MemoryView;
   private readonly compactor?: SceneCompactor;
   private readonly people?: PeopleView;
+  private readonly affect?: SceneAffect;
   /** 对话记录的字符预算：一条不切半，装不下的旧消息从前面掉。 */
   private readonly historyChars: number;
   constructor(deps: SceneDependencies) {
@@ -104,6 +127,7 @@ export class SceneSessions {
     this.model = deps.model; this.capabilities = deps.capabilities; this.requests = deps.requests;
     this.boundaries = deps.boundaries; this.limits = deps.limits; this.personality = deps.personality;
     this.memory = deps.memory; this.compactor = deps.compactor; this.people = deps.people;
+    this.affect = deps.affect;
     this.historyChars = deps.historyChars ?? 6000;
   }
   receive(scene: SceneDescriptor, kind: string, data: unknown, now: number): void {
@@ -128,7 +152,7 @@ export class SceneSessions {
     const allowed = this.boundaries.allowedTools.filter(name => name.startsWith(`${state.environment}.`));
     const frame = { id, stepId, state, source, allowed, now };
     const step = await this.loadStep({ ...frame, observations });
-    const scoped = { ...frame, step };
+    const scoped = { ...frame, observations, step };
     if (step.decision.type === 'tool') return this.toolCommit(scoped, step.decision);
     return this.decisionCommit(scoped);
   }
@@ -221,7 +245,10 @@ export class SceneSessions {
     const indexText = this.memory?.indexText?.(scopeOf(frame.state)) ?? '';
     // 认识的人：给最近见过的几位，附画像与近况。这是「记得人」真正落地的地方。
     const peopleText = this.people?.roster?.(5) ?? '';
-    const blocks: Array<[string, string]> = [['earlier', prior], ['memoryIndex', indexText], ['people', peopleText]];
+    // 心境：一句话描述，不是数字。这是情绪影响语气的唯一入口。
+    const moodText = this.affect?.narration?.(scopeOf(frame.state)) ?? '';
+    const blocks: Array<[string, string]> = [['earlier', prior], ['memoryIndex', indexText],
+      ['people', peopleText], ['mood', moodText]];
     return Object.fromEntries(blocks.filter(([, text]) => text !== ''));
   }
 
@@ -249,9 +276,39 @@ export class SceneSessions {
       this.repository.save({ ...frame.state, cursor: frame.step.through, steps: 0, summary: summary ?? frame.state.summary, updatedAt: frame.now });
       this.experience.record(`scene.audit:${frame.id}`, `scene.${decision.type}`, { sessionId: frame.id, decision }, frame.now);
       if (decision.type === 'reflect') this.requests.reflect({ sessionId: frame.id, trigger: decision.trigger, summary: decision.summary, evidence: decision.evidence }, frame.now);
+      // 情绪在这里更新：这一轮刚聊完，场景是唯一知道「对方说了什么、我回了什么」的地方。
+      this.observeAffect(frame);
       if (this.experience.read(frame.step.through, 1, frame.source).length) this.requests.continue(frame.id, frame.now + 1000);
     };
   }
+  /**
+   * 这一轮聊完，把情绪记下来。
+   *
+   * 判据全在 subject/appraisal.ts 的规则里；这里只负责把「对方说了什么、我回了什么」
+   * 如实传过去。写失败不影响这一轮对话——情绪是增强，不是前置依赖。
+   */
+  private observeAffect(frame: StepFrame): void {
+    if (this.affect === undefined) return;
+    const turn = this.lastTurn(frame);
+    if (turn === undefined) return;
+    const text = turn.user?.content ?? '';
+    try {
+      this.affect.observeTurn({ scope: scopeOf(frame.state), userId: turn.user?.userId ?? '', text,
+        reply: turn.assistant, atBot: frame.state.scope.type !== 'group',
+        question: text.includes('？') || text.includes('?'), now: frame.now });
+    } catch { /* 情绪写失败不该打断对话 */ }
+  }
+
+  /** 这一轮：对方最后说了什么、我最后回了什么。 */
+  private lastTurn(frame: StepFrame): { user?: TranscriptMessage; assistant: string } | undefined {
+    const rows = frame.observations ?? [];
+    const user = [...rows].reverse().map(row => toTranscriptMessage(row)).find(message => message?.role === 'user');
+    if (user === undefined) return undefined;
+    const assistant = [...rows].reverse().map(row => toTranscriptMessage(row))
+      .find(message => message?.role === 'assistant')?.content ?? '';
+    return { user, assistant };
+  }
+
   /** 反思证据必须属于本场景，避免把别处经验当成这里的观察。 */
   private assertEvidence(evidence: number[], source: string): void {
     this.experience.assertExists(evidence);

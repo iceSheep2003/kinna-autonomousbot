@@ -6,6 +6,10 @@ import type { CapabilityRegistry } from '../capabilities/registry.js';
 import { allowFor } from '../capabilities/scenarios.js';
 import { ModelSceneCompactor } from '../execution/scene-compactor.js';
 import { SubjectService } from '../subject/service.js';
+import { MoodSystem } from '../subject/mood-system.js';
+import { defaultAffectConfig } from '../subject/mood-system.js';
+import { createSceneAffect } from './scene-affect.js';
+import { reportDream, wireSelf } from './wire-self.js';
 import { GoalService } from '../subject/goals.js';
 import { AffectService } from '../subject/affect.js';
 import { ExperienceService } from '../memory/experience.js';
@@ -38,6 +42,8 @@ export interface AgentOptions {
   todos?: () => import('../self/todos.js').SelfTodo[]; // 自己想做的事，注入 self 上下文
   /** 人物视图：观察消息里的人 + 渲染认识的几位。 */
   people?: import('../execution/scene.js').PeopleView;
+  /** 情绪配置覆盖；不传用默认（启用、半衰期 180 分钟）。 */
+  affect?: Partial<import('../subject/mood-system.js').AffectConfig>;
   /** 人物仓储（写画像用）；不提供就不写画像。 */
   peopleStore?: { get(userId: string): import('../memory/person.js').Person | undefined; save(person: import('../memory/person.js').Person): void };
   /** 跨进程互斥由调用方注入；不传则只在进程内互斥。 */
@@ -81,11 +87,6 @@ function wireGate(input: { repositories: Repositories; experience: ExperienceLog
   return { gate, checkDream };
 }
 /** 整合完成：机会单独成一条通知（self 醒来看的是「有事可做」），再报整合本身。 */
-function reportDream(report: DreamReport, wiring: { gate: DreamGate; inbox: Inbox }): void {
-  wiring.gate.markConsolidated(report.now);
-  if (report.opportunities.length) wiring.inbox.notify('dream.opportunity', { dreamId: report.id, opportunities: report.opportunities }, report.now);
-  wiring.inbox.notify('dream.completed', { dreamId: report.id, summary: report.summary, proposals: report.proposals, opportunities: report.opportunities.length }, report.now);
-}
 
 export function composeAgent(repositories: Repositories, provider: LanguageModel, capabilities: CapabilityRegistry, options: AgentOptions) {
   const r = repositories;
@@ -99,6 +100,9 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const reflections = new ReflectionService(r.reflection, experience);
   const { gate, checkDream } = wireGate({ repositories: r, experience, options });
   const subject = new SubjectService(r.subject, new GoalService(r.goals, experience), new AffectService(r.subject, experience));
+  // 情绪与好感度：状态机在 subject 层，由**场景**写（它见过那一轮），self 只读。
+  const mood = new MoodSystem({ config: { ...defaultAffectConfig, ...(options.affect ?? {}) }, store: r.affect, clock: () => Date.now() });
+  const sceneAffect = createSceneAffect({ mood });
   let scenes: SceneSessions;
   const inbox = new Inbox({
     transaction: r.transaction, runtime: r.runtime, experience: r.experience, jobs: r.jobs, capacity: boundaries.maxPendingJobs,
@@ -138,22 +142,20 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     compactor: new ModelSceneCompactor(model),
     // 人物：消息流过时顺手认人，注入时给认识的几张卡片。
     ...(options.people ? { people: options.people } : {}),
+    // 情绪：场景在回复后写（规则算，不调模型），self 只读来决定要不要主动开口。
+    affect: sceneAffect,
     requests: {
       continue: (id, now) => { r.jobs.enqueue('scene', `scene:${id}`, { sessionId: id }, now); },
       reflect: (request, now) => inbox.notify('scene.reflection_requested', request, now),
     },
   });
-  const self = new SelfSession({
-    model, repository: r.selfSession, inbox, personality,
-    context: new SelfContextBuilder({ subject, memory, executions, schedules: scheduler, inbox, session: r.selfSession, capabilities, boundaries, limits,
-      ...(options.todos ? { todos: options.todos } : {}), toolNames: allowFor('self', boundaries.allowedTools) }),
-    committer: new DecisionCommitter({ subject, executions, scheduler, reflections, jobs: r.jobs, capacity: boundaries.maxPendingJobs }),
-  });
+  const self = wireSelf({ repositories: r, model, memory, experience, subject, executions, scheduler, inbox,
+    capabilities, boundaries, limits, personality, mood, reflections, ...(options.todos ? { todos: options.todos } : {}) });
   const runner = new ExecutionRunner({ repository: r.execution, service: executions, model, capabilities, memory, experience, boundaries, limits });
   const dream = wireDream({
     repositories: r, experience, model, limits, opportunities: options.dreamOpportunities,
     ...(options.peopleStore ? { people: options.peopleStore } : {}),
-    feedback: { completed: report => reportDream(report, { gate, inbox }) },
+    feedback: { completed: report => reportDream(report, gate, inbox) },
   });
   worker.register('self', { prepare: (job, now) => self.prepare(job.payload, job.error, now) });
   worker.register('scene', { prepare: (job, now) => scenes.prepare(job.id, String(job.payload.sessionId), now), failed: (job, error, now) => scenes.failed(String(job.payload.sessionId), error, now) });

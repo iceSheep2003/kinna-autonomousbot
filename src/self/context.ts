@@ -22,6 +22,8 @@ export interface ContextDependencies {
   todos?: () => SelfTodo[];
   /** 本场景固化的工具清单；不传则退回部署白名单（装配层负责按场景算）。 */
   toolNames?: string[];
+  /** 心境的一句话描述；由场景侧维护，self 只读。 */
+  moodNarration?: () => string;
 }
 
 /** self 每轮只看到有界快照；会话永久存在不等于上下文无限增长。 */
@@ -37,19 +39,23 @@ export class SelfContextBuilder {
   private readonly limits: ContextLimits;
   private readonly todos?: () => SelfTodo[];
   private readonly toolNames?: string[];
+  private readonly moodNarration?: () => string;
   constructor(deps: ContextDependencies) {
     this.subject = deps.subject; this.memory = deps.memory; this.executions = deps.executions;
     this.schedules = deps.schedules; this.inbox = deps.inbox; this.session = deps.session;
     this.capabilities = deps.capabilities; this.boundaries = deps.boundaries; this.limits = deps.limits;
-    this.todos = deps.todos; this.toolNames = deps.toolNames;
+    this.todos = deps.todos; this.toolNames = deps.toolNames; this.moodNarration = deps.moodNarration;
   }
   build(trigger: unknown, previousAttemptError: string | undefined, now: number) {
     const cursor = this.session.cursor();
     const observations = this.inbox.read(cursor, this.limits.observations);
     const query = JSON.stringify(observations).slice(0, payloadBudget.recallQueryChars);
     const indexText = this.memory.indexText?.() ?? '';
+    const moodText = this.moodNarration?.() ?? '';
     return { cursor, now, trigger, previousAttemptError, subject: this.subject.read(),
       goals: this.subject.goals(query, this.limits.goals),
+      // 心境：一句话，不是数字。self 只读——它没看过那一轮对话，不该写这个。
+      ...(moodText === '' ? {} : { mood: moodText }),
       // 索引优先：先给一份目录（我记得什么），细节留给 memory.expand。
       ...(indexText === '' ? {} : { memoryIndex: indexText }),
       memories: this.memory.recall(query, this.limits.memories),
