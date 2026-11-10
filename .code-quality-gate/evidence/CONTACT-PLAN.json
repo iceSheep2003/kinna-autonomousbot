@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "id": "CONTACT-PLAN",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-10T14:28:34.920Z",
+    "snapshot": {
+      "contract": "80865db8d00aec3a78b00f9d86e0eb09eaa23bd71bdd5d98dfd1fbb8a95b27f4",
+      "protected": {
+        ".code-quality-gate/tasks/CONTACT-PLAN.json": "fc939a152f8dc1d7042882cc7c046af977013358a62cd5443f69793b8e7ef143",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/contact-plan.test.ts": "82d8d502c1cb71cae73f515030db6c0f938e624428e61ad4c799836ef50e8ec0"
+      },
+      "code": {
+        "src/app/agent.ts": "306d229c4dfa8760ae72a1e5d225b51c0a2b62870c1e300a210a94a5b2bdbc15",
+        "src/app/wire-self.ts": "f5cac247ebfe27e6b0272f105231d0f1434b728d479803ac0f54310bfab14186",
+        "src/capabilities/scenarios.ts": "f9cbdcc627a9b2203f95c5628c52c842633a49edbd0dab61bc13dbe88b1fc386",
+        "src/infrastructure/sqlite/contacts.ts": "5d0ce3caee100bf6655f3de38775e235ef670ee995642cb94a42c7ce79d0eea3",
+        "src/main.ts": "b13ddbbc0791644e207b76073fccfe00d00cfc1d6c70e7b16067e5e66ea386cc",
+        "src/self/contact-tools.ts": "033d3ce8bb50d21645500c82113961488effaff19668abb52ab623b29a7453fa",
+        "src/self/contacts.ts": "53da7fda5d00048563d1a0bbe960e0aaa8bd68d8782ec5bc1c053da86fbf2334",
+        "src/self/context.ts": "0385dd14066136e9575a6cb18457233182b49480ee62055a09b6a96e42bdb2d4"
+      }
+    },
+    "report": ".quality/code-quality-gate/CONTACT-PLAN/red-71f8afdb-571d-4377-a0c6-2ed459841720.md"
+  },
+  "green": {
+    "time": "2026-11-10T14:28:42.750Z",
+    "snapshot": {
+      "contract": "80865db8d00aec3a78b00f9d86e0eb09eaa23bd71bdd5d98dfd1fbb8a95b27f4",
+      "protected": {
+        ".code-quality-gate/tasks/CONTACT-PLAN.json": "fc939a152f8dc1d7042882cc7c046af977013358a62cd5443f69793b8e7ef143",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/contact-plan.test.ts": "82d8d502c1cb71cae73f515030db6c0f938e624428e61ad4c799836ef50e8ec0"
+      },
+      "code": {
+        "src/app/agent.ts": "306d229c4dfa8760ae72a1e5d225b51c0a2b62870c1e300a210a94a5b2bdbc15",
+        "src/app/wire-self.ts": "f5cac247ebfe27e6b0272f105231d0f1434b728d479803ac0f54310bfab14186",
+        "src/capabilities/scenarios.ts": "f9cbdcc627a9b2203f95c5628c52c842633a49edbd0dab61bc13dbe88b1fc386",
+        "src/infrastructure/sqlite/contacts.ts": "5d0ce3caee100bf6655f3de38775e235ef670ee995642cb94a42c7ce79d0eea3",
+        "src/main.ts": "b13ddbbc0791644e207b76073fccfe00d00cfc1d6c70e7b16067e5e66ea386cc",
+        "src/self/contact-tools.ts": "033d3ce8bb50d21645500c82113961488effaff19668abb52ab623b29a7453fa",
+        "src/self/contacts.ts": "933f7d250b6e0c08fb313a3eef26840a6c833afea929bf014c2f8d03cabd294d",
+        "src/self/context.ts": "0385dd14066136e9575a6cb18457233182b49480ee62055a09b6a96e42bdb2d4"
+      }
+    },
+    "report": ".quality/code-quality-gate/CONTACT-PLAN/green-6c855ee6-11f0-4ce0-9d8e-1b3f01d2b336.md"
+  }
+}

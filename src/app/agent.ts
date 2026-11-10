@@ -42,6 +42,8 @@ export interface AgentOptions {
   todos?: () => import('../self/todos.js').SelfTodo[]; // 自己想做的事，注入 self 上下文
   /** 人物视图：观察消息里的人 + 渲染认识的几位。 */
   people?: import('../execution/scene.js').PeopleView;
+  /** 打算找谁聊聊（含由头）。醒来能看到，不用先调工具。 */
+  contacts?: () => { id: string; target: { type: string; id: string }; because: string; what: string }[];
   /** 能主动联系的对象。合不合适开口由心情决定，不在这里传。 */
   social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[] };
   /** 情绪配置覆盖；不传用默认（启用、半衰期 180 分钟）。 */

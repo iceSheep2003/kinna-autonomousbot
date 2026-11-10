@@ -19,6 +19,7 @@ export const SCENARIO_TOOLS = {
   self: [
     'memory.search', 'memory.expand', 'memory.promote', 'experience.read', 'self.note',
     'self.todo_add', 'self.todo_list', 'self.todo_close',
+    'self.contact_plan', 'self.contact_done', 'self.contact_drop', 'self.contact_list',
     'web.search', 'web.fetch',
     'bilibili.discover', 'bilibili.search', 'bilibili.video', 'bilibili.comments', 'bilibili.quotas',
     'bilibili.todo', 'bilibili.todo_claim', 'bilibili.todo_done', 'bilibili.todo_skip',

@@ -324,6 +324,21 @@ self 的上下文里现在有社交圈：
 2. `social` —— 有哪些群、能私聊谁、现在合不合适
 3. `qq.environment` 放开给 self —— 不再靠猜群号
 
+**主动找人要先记计划，计划必须有由头**：
+
+```ts
+self.contact_plan   target / because（≥10字）/ what / at?
+self.contact_list   还开着的计划（醒来也能在上下文里看到）
+self.contact_done   标记结果：replied / ignored / unknown
+self.contact_drop   放弃，写一句为什么
+```
+
+`because` 少于 10 个字直接报错——**想不出理由就建不出计划**，这是「不会无缘无故私聊」的第一道门。
+
+第二道门是 `ignored`：被无视过的人不再出现在待办里，所以不会一直追同一个人。
+
+同一人 + 同一句话会合并，不会越堆越乱。
+
 **不给 self 直接改人物画像的权限**：印象应该是互动积累出来的，让它自己写会编人设。
 要记人就走 `memory.observe`（带 `subjectUserId`），情绪事件走的就是这条路。
 

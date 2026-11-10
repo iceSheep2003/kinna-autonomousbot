@@ -27,6 +27,8 @@ export interface ContextDependencies {
   moodNarration?: () => string;
   /** 我认识的人：最近见过的几位，渲染成一段人话。不传就不提。 */
   people?: () => string;
+  /** 打算找谁聊聊：只看还开着的。醒来能看到，不用先调工具。 */
+  contacts?: () => { id: string; target: { type: string; id: string }; because: string; what: string }[];
   /** 社交圈：能跟谁说话、现在合不合适主动开口。 */
   social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[]; proactivePermitted: boolean };
 }
@@ -47,12 +49,13 @@ export class SelfContextBuilder {
   private readonly moodNarration?: () => string;
   private readonly people?: () => string;
   private readonly social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[]; proactivePermitted: boolean };
+  private readonly contacts?: () => { id: string; target: { type: string; id: string }; because: string; what: string }[];
   constructor(deps: ContextDependencies) {
     this.subject = deps.subject; this.memory = deps.memory; this.executions = deps.executions;
     this.schedules = deps.schedules; this.inbox = deps.inbox; this.session = deps.session;
     this.capabilities = deps.capabilities; this.boundaries = deps.boundaries; this.limits = deps.limits;
     this.todos = deps.todos; this.toolNames = deps.toolNames; this.moodNarration = deps.moodNarration;
-    this.people = deps.people; this.social = deps.social;
+    this.people = deps.people; this.social = deps.social; this.contacts = deps.contacts;
   }
   /** 认识的人 + 能找谁 + 我这会儿的心情。没有就都不出现，不留空字段占位。 */
   private softContext(): Record<string, string> {
@@ -86,6 +89,8 @@ export class SelfContextBuilder {
       observations, recent: this.session.recentDecisions(this.limits.recentTurns),
       // 自己想做的事：只给开着的、最新的几条，避免清单一长就变成负担。
       ...(this.todos ? { todos: this.todos().slice(0, 5) } : {}),
+      // 想找谁聊聊：连由头一起给，不是只给一句“要联系 X”。
+      ...(this.contacts !== undefined ? { contacts: this.contacts().slice(0, 3) } : {}),
       schedules: this.schedules.pending(this.limits.schedules), executions: this.executions.ongoing(this.limits.executions),
       // 会变的部分统一放这里：情绪、焦点、游标、本次唤醒的原因。
       state: { affect: self_state.affect, focus: self_state.focus, revision: self_state.revision,

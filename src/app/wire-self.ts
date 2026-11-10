@@ -48,6 +48,7 @@ export function wireSelf(input: {
   todos?: () => import('../self/todos.js').SelfTodo[];
   people?: () => string;
   social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[]; proactivePermitted: boolean };
+  contacts?: () => { id: string; target: { type: string; id: string }; because: string; what: string }[];
 }): SelfSession {
   return new SelfSession({
     model: input.model, repository: input.repositories.selfSession, inbox: input.inbox, personality: input.personality,
@@ -58,6 +59,7 @@ export function wireSelf(input: {
       moodNarration: () => input.mood.narration(),
       ...(input.people ? { people: input.people } : {}),
       ...(input.social ? { social: input.social } : {}),
+      ...(input.contacts ? { contacts: input.contacts } : {}),
       ...(input.todos ? { todos: input.todos } : {}),
       toolNames: allowFor('self', input.boundaries.allowedTools) }),
     committer: new DecisionCommitter({ subject: input.subject, executions: input.executions, scheduler: input.scheduler,
@@ -67,12 +69,15 @@ export function wireSelf(input: {
 
 /** self 的额外注入：待办、认识的人、社交圈。都不改变主干，只是多给点上下文。 */
 export function selfExtras(
-  options: { todos?: () => import('../self/todos.js').SelfTodo[]; people?: { roster?(limit: number): string }; social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[] } },
+  options: { todos?: () => import('../self/todos.js').SelfTodo[]; people?: { roster?(limit: number): string };
+    social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[] };
+    contacts?: () => { id: string; target: { type: string; id: string }; because: string; what: string }[] },
   mood: MoodSystem,
 ) {
   return {
     ...(options.todos ? { todos: options.todos } : {}),
     ...(options.people?.roster !== undefined ? { people: () => options.people?.roster?.(5) ?? '' } : {}),
     social: socialOf(options.social, mood),
+    ...(options.contacts ? { contacts: options.contacts } : {}),
   };
 }

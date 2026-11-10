@@ -1,4 +1,4 @@
 {
-  "manifest": ".code-quality-gate/tasks/SELF-SOCIAL.json",
+  "manifest": ".code-quality-gate/tasks/CONTACT-PLAN.json",
   "config": "quality.config.json"
 }

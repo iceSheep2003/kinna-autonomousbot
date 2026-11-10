@@ -22,6 +22,9 @@ import { BilibiliLogin } from './infrastructure/bilibili/login.js';
 import { SqliteSessionStore } from './infrastructure/sqlite/bilibili-session.js';
 import { SessionHost } from './app/bilibili-session.js';
 import { registerSelfTodoTools } from './self/todo-tools.js';
+import { registerContactTools } from './self/contact-tools.js';
+import { SqliteContactStore } from './infrastructure/sqlite/contacts.js';
+import { CONTACT_CAP, pendingContacts } from './self/contacts.js';
 import { SqliteSelfTodoStore } from './infrastructure/sqlite/self-todos.js';
 import { MemoryForgetter } from './memory/forget-service.js';
 import { SqlitePeopleRepository } from './infrastructure/sqlite/people.js';
@@ -90,6 +93,8 @@ if (bilibiliConfig.enabled) {
 }
 const model = new OpenAICompatibleModel({ baseUrl: process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1', apiKey: LLM_API_KEY, model: LLM_MODEL, profiles: profilesFromEnv(process.env) });
 const selfTodos = new SqliteSelfTodoStore(store);
+const contacts = new SqliteContactStore(store);
+const openContacts = () => pendingContacts(contacts.list(), CONTACT_CAP);
 // 人物：消息流过时认人，Dream 写画像，场景注入时给几张卡片。
 const peopleStore = new SqlitePeopleRepository(store);
 const people = new PeopleRoster(peopleStore, renderPerson);
@@ -99,6 +104,7 @@ const agent = composeAgent(repositories, model, capabilities, { ...config,
   todos: () => openTodos(selfTodos.list(TODO_CAP), 5),
   people,
   peopleStore,
+  contacts: openContacts,
   // 社交圈：self 得知道能跟谁说话，否则主动开口只能靠猜群号。
   // proactivePermitted 由 agent 内部按心情填，这里只给「有哪些对象」。
   ...(config.qq ? { social: () => socialCircleOf(config.qq!) } : {}) });
@@ -107,6 +113,8 @@ registerMemory(capabilities, agent.memory, agent.experience);
 registerNotes(capabilities, agent.experience);
 // 自己想做的事：看到/听到什么就记一条，醒来能看到。
 registerSelfTodoTools(capabilities, { store: selfTodos });
+// 主动找人：先记计划（含由头），做过之后写结果。
+registerContactTools(capabilities, { store: contacts });
 registerConversation(capabilities, agent.experience);
 capabilities.validate(config.boundaries.allowedTools, config.boundaries.allowedTools);
 runtime.start();

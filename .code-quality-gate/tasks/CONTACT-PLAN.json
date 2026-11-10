@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "CONTACT-PLAN",
+  "title": "主动找人有由头：计划必填 because，被无视要记下来",
+  "requirements": [
+    "没有具体由头就建不出计划（防无缘无故私聊）",
+    "同一个人同一件事不重复记",
+    "标记完成必须写结果；被无视要能记下来",
+    "只列还开着的计划"
+  ],
+  "testFiles": ["test/contact-plan.test.ts"],
+  "codeFiles": ["src/self/contacts.ts", "src/self/contact-tools.ts", "src/infrastructure/sqlite/contacts.ts", "src/self/context.ts", "src/app/wire-self.ts", "src/app/agent.ts", "src/main.ts", "src/capabilities/scenarios.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}
