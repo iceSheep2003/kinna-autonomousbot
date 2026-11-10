@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "id": "PRIVATE-VISIBILITY",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-10T14:01:27.003Z",
+    "snapshot": {
+      "contract": "246f615c19acbe46b62cd41af2a76f18fa98f6365bc96dfa3ff78e425850ad04",
+      "protected": {
+        ".code-quality-gate/tasks/PRIVATE-VISIBILITY.json": "a4160ed0a294a04203ad364fba8f449cc73b253363e5e98db1a72f27e5236256",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/private-memory-visibility.test.ts": "f5a6fcfacc7a8377ddcfbbcdf3150835ecb4673b902bd881b6b7bbd2952bee05"
+      },
+      "code": {
+        "src/infrastructure/sqlite/memory.ts": "061fcc95990e9262b0ab07d3f79cea50cd900470c41dcaed5d6a6603d696a3c2",
+        "src/memory/ports.ts": "94c8778481508962115a40224e0738b94083690a70ab7f7d1efc37922fbfeb43",
+        "src/memory/service.ts": "6278e09f00921c0f9fd647a819142250a86790cea302c924ab48b7c75a0dcc1a"
+      }
+    },
+    "report": ".quality/code-quality-gate/PRIVATE-VISIBILITY/red-b10dc975-a983-489e-8f46-26a4de5f5b2d.md"
+  },
+  "green": {
+    "time": "2026-11-10T14:01:51.492Z",
+    "snapshot": {
+      "contract": "246f615c19acbe46b62cd41af2a76f18fa98f6365bc96dfa3ff78e425850ad04",
+      "protected": {
+        ".code-quality-gate/tasks/PRIVATE-VISIBILITY.json": "a4160ed0a294a04203ad364fba8f449cc73b253363e5e98db1a72f27e5236256",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/private-memory-visibility.test.ts": "f5a6fcfacc7a8377ddcfbbcdf3150835ecb4673b902bd881b6b7bbd2952bee05"
+      },
+      "code": {
+        "src/infrastructure/sqlite/memory.ts": "f979ce51cc30b49e07d56e29cec87151605196a1d5d8d6b17425a8b1e706a8ec",
+        "src/memory/ports.ts": "7769411e6877c063084ae64eff61739a83bceead92acec3edfd91b43b3263cd7",
+        "src/memory/service.ts": "b7094aba9ea85fcfbad4bb65733403f634236a46d8d6875ee976f9e9d4fc0a39"
+      }
+    },
+    "report": ".quality/code-quality-gate/PRIVATE-VISIBILITY/green-3881b59f-c699-47c2-8390-16aebf23f628.md"
+  }
+}

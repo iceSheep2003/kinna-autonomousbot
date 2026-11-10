@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "SCENE-PRIVACY",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-10T14:02:07.728Z",
+    "snapshot": {
+      "contract": "71bf16b1b1f45cf2345f6beabc4d9c3adf90996a388dc583666537ca94990fe8",
+      "protected": {
+        ".code-quality-gate/tasks/SCENE-PRIVACY.json": "f999695ebd90f1a811288a56d0e2f4b7b3f5cb51783c41af3a02f483f6339ba9",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/scene-privacy.test.ts": "b0cfb201072b21b650b2439f5a5964022d7c6bc5bb756921d2d19159a06714c5"
+      },
+      "code": {
+        "src/execution/scene.ts": "77375bd104da93a5676af3741c49620485f6a87ad8c12425efdafa7ced00c2e6"
+      }
+    },
+    "report": ".quality/code-quality-gate/SCENE-PRIVACY/red-1ec77d93-1aa2-4eed-a30c-c9facedefe60.md"
+  },
+  "green": {
+    "time": "2026-11-10T14:02:22.311Z",
+    "snapshot": {
+      "contract": "71bf16b1b1f45cf2345f6beabc4d9c3adf90996a388dc583666537ca94990fe8",
+      "protected": {
+        ".code-quality-gate/tasks/SCENE-PRIVACY.json": "f999695ebd90f1a811288a56d0e2f4b7b3f5cb51783c41af3a02f483f6339ba9",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/scene-privacy.test.ts": "b0cfb201072b21b650b2439f5a5964022d7c6bc5bb756921d2d19159a06714c5"
+      },
+      "code": {
+        "src/execution/scene.ts": "8d907f9300be1cf7a931a9054088ad3d41ca06ad4d92fcd3b3132c46a062ce18"
+      }
+    },
+    "report": ".quality/code-quality-gate/SCENE-PRIVACY/green-01030961-ffb1-4921-a6a7-6e76a3be5d50.md"
+  }
+}

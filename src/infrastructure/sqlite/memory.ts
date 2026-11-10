@@ -89,10 +89,23 @@ export class SqliteMemoryRepository implements MemoryRepository {
    * 按人取事实，走 memories_subject 索引。
    * 作用域同样遵守「owner + 当前场景」，不越界。
    */
-  factsAbout(userId: string, scope: string, limit: number) {
-    return this.db.db.prepare(
-      `SELECT * FROM memories WHERE subject_user_id=? AND status='active' AND scope IN ('owner', ?)
-       ORDER BY importance DESC, updated_at DESC LIMIT ?`).all(userId, scope, limit).map(row => fromRow(row)!);
+  /**
+   * 关于某个人的事实。
+   *
+   * `includeOtherScopes` 是**私聊专用**的放宽：同一个人在不同群说过的话，
+   * 私聊时该记得——那些都是他自己说的，对他没有秘密可言。
+   *
+   * 但**别人的私聊永远读不到**：条件里 `scope NOT LIKE 'private:%'` 把私聊排除在放宽之外，
+   * 只允许 `scope = ?`（也就是自己这条私聊）。别人私聊里的事不该因为「聊到同一个人」而泄露。
+   */
+  factsAbout(userId: string, scope: string, limit: number, options: { includeOtherScopes?: boolean } = {}) {
+    const sql = options.includeOtherScopes === true
+      ? `SELECT * FROM memories WHERE subject_user_id=? AND status='active'
+         AND (scope NOT LIKE 'private:%' OR scope = ?)
+         ORDER BY importance DESC, updated_at DESC LIMIT ?`
+      : `SELECT * FROM memories WHERE subject_user_id=? AND status='active' AND scope IN ('owner', ?)
+         ORDER BY importance DESC, updated_at DESC LIMIT ?`;
+    return this.db.db.prepare(sql).all(userId, scope, limit).map(row => fromRow(row)!);
   }
 
   cursor() { return this.db.get<number>('meta', 'dreamCursor') ?? 0; }

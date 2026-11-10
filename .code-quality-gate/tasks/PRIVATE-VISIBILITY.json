@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "PRIVATE-VISIBILITY",
+  "title": "私聊与群聊的记忆可见性不对称",
+  "requirements": [
+    "私聊里能读到这个人在各群说过的话（都是他自己说的）",
+    "私聊读不到别人的私聊内容",
+    "群聊读不到这个人的私聊内容——私下的不能搬到台面上",
+    "默认（群聊）行为不变：只看 owner + 本场景"
+  ],
+  "testFiles": ["test/private-memory-visibility.test.ts"],
+  "codeFiles": ["src/infrastructure/sqlite/memory.ts", "src/memory/service.ts", "src/memory/ports.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

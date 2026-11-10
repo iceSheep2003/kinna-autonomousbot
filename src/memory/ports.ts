@@ -23,7 +23,7 @@ export interface MemoryRepository {
   /** 可选：被注入过的记录记一次访问，供排序的 access 信号使用。 */
   reinforce?(ids: string[], now: number): void;
   /** 可选：按事实主体取（走 subject_user_id 索引）。老实现不提供时由服务层退回候选池筛。 */
-  factsAbout?(userId: string, scope: string, limit: number): Memory[];
+  factsAbout?(userId: string, scope: string, limit: number, options?: { includeOtherScopes?: boolean }): Memory[];
   /** 可选：某个作用域的索引；不传 scope 取 owner。老实现不提供则不启用索引层。 */
   index?(scope?: string): MemoryIndex | undefined;
   publishIndex?(index: MemoryIndex): void;
@@ -54,7 +54,7 @@ export interface MemoryView {
    * 按 QQ 号取「关于这个人的事实」。
    * 走 subject_user_id 索引，不靠检索排序碰运气——用户认人靠号，不靠名字。
    */
-  factsAbout?(userId: string, scope: string, limit: number): Memory[];
+  factsAbout?(userId: string, scope: string, limit: number, options?: { includeOtherScopes?: boolean }): Memory[];
 }
 export interface ExperienceView {
   read(after: number, limit: number, source?: string): Experience[];

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "SCENE-PRIVACY",
+  "title": "回复的分寸按场合区分：私聊更私人，群聊不搬私聊内容",
+  "requirements": [
+    "私聊要能说更私人的事，因为只有两个人",
+    "群聊是公开场合，不能把私聊里听到的事搬到台面上",
+    "私聊和群聊的指令内容不同",
+    "不传场景时保持旧行为"
+  ],
+  "testFiles": ["test/scene-privacy.test.ts"],
+  "codeFiles": ["src/execution/scene.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

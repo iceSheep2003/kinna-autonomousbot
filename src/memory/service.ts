@@ -157,8 +157,8 @@ export class MemoryService implements MemoryView {
    * 场景里每次有人说话都会调它——所以必须走索引（subject_user_id），
    * 不能靠"检索碰运气"。读不到就是真的没记过这个人。
    */
-  factsAbout(userId: string, scope: string, limit: number): Memory[] {
-    const rows = this.repository.factsAbout?.(userId, scope, limit * 3)
+  factsAbout(userId: string, scope: string, limit: number, options: { includeOtherScopes?: boolean } = {}): Memory[] {
+    const rows = this.repository.factsAbout?.(userId, scope, limit * 3, options)
       // 老仓储没有这个能力时退回候选池里筛：慢一点但结果一样。
       ?? this.pool({ query: userId, limit: limit * 3, now: this.now(), scope }).filter(memory => memory.subjectUserId === userId);
     return rows

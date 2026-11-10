@@ -1,4 +1,4 @@
 {
-  "manifest": ".code-quality-gate/tasks/PRIVATE-SCOPE.json",
+  "manifest": ".code-quality-gate/tasks/SCENE-PRIVACY.json",
   "config": "quality.config.json"
 }

@@ -37,8 +37,26 @@ import { SceneDecisionSchema, type SceneDecision, type SceneDescriptor, type Sce
  * 同一主体在「正在跟人说话」这个场合的指令。人格不在这里定义，只引用 shared/persona.ts。
  * 早期版本写「你是持续场景 session」，模型便真的用系统口吻接话；现在强调「还是你」。
  */
-export function sceneInstructions(personality: Personality | undefined): string {
-  return `还是你，同一个人，只是这会儿正在这个群里跟人说话。
+/**
+ * 场合决定了说话的分寸：私聊只有两个人，群里是公开场合。
+ *
+ * 这段必须随场景变——同一套话术用在私聊里会显得生分，用在群里会把私下的事说漏。
+ */
+function placeLine(place: { type?: string } | undefined): string {
+  if (place?.type === 'private') {
+    return '这会儿是**私聊**，只有你们两个人：可以说更私人的事、更放松地说话，不用顾虑别人听见。'
+      + '但别人私下告诉你的话，仍然不能在这里转述给第三个人。';
+  }
+  if (place?.type === 'group') {
+    return '这会儿是**群聊**，是公开场合：能接大家的梗、聊公共话题，但**不能把别人私下跟你说的事搬到群里**，'
+      + '也不要在这里提到私聊里的内容。拿不准的私事就别说。';
+  }
+  return '这会儿是在跟人说话：注意场合，别人私下告诉你的事不要当众转述。';
+}
+
+export function sceneInstructions(personality: Personality | undefined, place?: { type?: string }): string {
+  return `还是你，同一个人，只是这会儿正在这个场合跟人说话。
+${placeLine(place)}
 人格、记性、脾气都不换；别切成客服腔，也别写成汇报。说完这句就过去了。
 ${personaText(personality)}
 ${SOCIAL_LINES}
@@ -198,7 +216,7 @@ export class SceneSessions {
     if (stored) return stored;
     const context = this.context(frame);
     const decision = SceneDecisionSchema.parse(await this.model.decide({ role: 'scene', schema: SceneDecisionSchema, context,
-      instructions: sceneInstructions(this.personality) }));
+      instructions: sceneInstructions(this.personality, frame.state.scope) }));
     const step = { decision, context, through: frame.observations.at(-1)!.seq };
     this.repository.saveStep(frame.stepId, step);
     return step;
@@ -217,7 +235,7 @@ export class SceneSessions {
       // 场景记忆：owner 层（所有场合适用）+ 这个群/这个环境的。scope 由环境与 id 决定。
       ...(this.memory ? { memories: this.memory.context?.({
         query, limit: this.limits.memories, now: frame.now,
-        scope: `${frame.state.environment === 'qq' ? 'group' : 'feature'}:${frame.state.scope.id ?? frame.id}`,
+        scope: scopeOf(frame.state),
       }) } : {}),
       transcript, ...(Object.keys(speaker).length === 0 ? {} : { speaker }),
       recent: this.repository.recentDecisions(frame.id, this.limits.recentTurns),
@@ -233,7 +251,10 @@ export class SceneSessions {
     const who = currentSpeaker(frame.observations);
     if (who.userId === undefined) return {};
     const scope = scopeOf(frame.state);
-    const facts = this.memory?.factsAbout?.(who.userId, scope, 8) ?? [];
+    // 私聊放宽：同一个人在各群说过的话，私聊时该记得（都是他自己说的）。
+    // 群聊收紧：绝不能把他在私聊里讲的事搬到群里。这是**不对称**的可见性。
+    const privateTalk = frame.state.scope.type === 'private';
+    const facts = this.memory?.factsAbout?.(who.userId, scope, 8, { includeOtherScopes: privateTalk }) ?? [];
     const person = this.people?.profile?.(who.userId);
     const blocks: Array<[string, unknown]> = [['userId', who.userId], ['name', who.name], ['person', person], ['facts', facts],
       ['transcriptTail', transcript.filter(m => m.userId === who.userId).length]];
