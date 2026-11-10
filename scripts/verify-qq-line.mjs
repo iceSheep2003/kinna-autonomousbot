@@ -47,6 +47,12 @@ const model = { async decide(request) {
   rolesSeen.push({ role: request.role, sessionId: context?.session?.id,
     hasTranscript: Array.isArray(context?.transcript), hasIndex: typeof context?.memoryIndex === 'string',
     hasTodos: Array.isArray(context?.todos), hasSpeaker: context?.speaker !== undefined });
+  // REFLECT=1 时验证「什么会唤醒 self」：第一轮就明确要求反思
+  if (process.env.REFLECT === '1' && context?.transcript?.length && !spoke) {
+    spoke = true;
+    return request.schema.parse({ type: 'reflect', trigger: 'direction_review',
+      summary: '他反复提到选错学校，可能要看方向', evidence: [context.transcript[0].seq] });
+  }
   if (context?.session !== undefined && !spoke) {
     spoke = true;
     return request.schema.parse({ type: 'tool', name: 'qq.send_message',

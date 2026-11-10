@@ -191,6 +191,39 @@ npm run verify:qq
 
 它会把「普通消息 / 引用 / 语音 / 图片」四条路各发一条，然后打印**模型实际看到的对话记录**。
 
+### 聊天时什么会唤醒 self
+
+**只有一种：scene 明确要求反思（`reflect`）。** 普通聊天不唤醒 self。
+
+实测（`REFLECT=1 npm run verify:qq` 对比普通与反思两种情况）：
+
+```
+普通聊天             明确 reflect
+self  ← 启动一次     self  ← 启动一次
+scene ← 处理消息     scene ← 处理消息，决定反思
+scene ← 继续观察     self  ← 被反思唤醒
+```
+
+`reflect` 的触发条件（模型自己判断，代码只做校验）：
+
+| `trigger` | 什么时候用 |
+|---|---|
+| `goal_conflict` | 长期目标之间冲突 |
+| `important_discovery` | 发现了重要的事 |
+| `direction_review` | 整体方向该重看 |
+| `relationship_change` | 和谁的关系变了 |
+| `persistent_failure` | 持续失败 |
+
+**硬约束：必须带 `evidence`**（≥1 条，且必须属于本场景的经验序号），否则拒绝。
+指令里也明确写了「不要因为每次普通聊天或工具完成就 reflect」。
+
+**scene 不能自己记笔记**：它的工具被限制成 `${environment}.*`（qq 场景只有 `qq.*`），
+没有 `self.note`。它唯一能让 self 知道点什么的方式就是 `reflect`。
+真正写笔记是 self 醒来后自己的决定（`self.note`，异步执行）。
+
+对话之外唤醒 self 的途径：定时（`nextWakeAt`/schedule）、Dream 完成、
+执行完成、每日任务提醒、热点分享——这些都不经过 scene。
+
 ### 群聊里怎么记住人和话
 
 三个「记不住」是在这里解决的（照线上实测的做法）：
