@@ -14,6 +14,8 @@ export interface BilibiliToolsDeps {
   /** 按热度选点 + 无头浏览器截图；不配置时 bilibili.video 会明确报错。 */
   shots?: VideoShots;
   heat?: HeatSampler;
+  /** 取播放流地址（DASH），截图需要真实流。 */
+  stream?: (input: { bvid: string; cid: number; signal: AbortSignal }) => Promise<string>;
   /** 截图文件对外可访问的地址前缀；DeepSeek 靠它下载图片。 */
   publicBaseUrl?: string;
   drafts: DraftQueue;
@@ -43,12 +45,15 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
       if (!deps.shots) throw new Error('读视频需要无头浏览器（playwright）与截图地址配置');
       const meta = await video.meta(input.bvid, input.page, signal);
       guard(meta);
-      const heat = deps.heat ? await deps.heat.heat({ bvid: meta.bvid, cid: meta.cid, signal }) : null;
+      const heat = deps.heat ? await deps.heat.heat({ bvid: meta.bvid, cid: meta.cid, aid: meta.aid, signal }) : null;
       const points = pickMoments({ durationSeconds: meta.durationSeconds, count: input.frames ?? config.maxFrames, heat });
-      const shot = await deps.shots.capture({ bvid: meta.bvid, timestamp: meta.durationSeconds, count: points.length, at: points.map(point => point.at), signal });
+      if (!deps.stream) throw new Error('没有配置取流（playurl），无法截图');
+      const streamUrl = await deps.stream({ bvid: meta.bvid, cid: meta.cid, signal });
+      const shot = await deps.shots.capture({ bvid: meta.bvid, streamUrl, at: points.map(point => point.at), signal });
       return {
         bvid: meta.bvid, title: meta.title, owner: meta.ownerName, durationSeconds: meta.durationSeconds,
         heatAvailable: heat !== null,
+        heatSource: heat ? '弹幕时间分布' : '无（均匀取样）',
         shots: shot.shots.map((item, index) => ({ ...item, why: points[index]?.why ?? '' })),
         note: '图会随下一次发言进入上下文；描述画面里确实有的东西，不要替视频编主题。',
       };

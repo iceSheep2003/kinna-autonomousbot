@@ -11,6 +11,8 @@ export const BilibiliConfigSchema = z.object({
   dynamicPolicy: z.enum(['off', 'draft', 'on']).default('draft'),
   /** 一天最多真正发出多少条评论/动态，防止一次回放把话说完。 */
   maxPostsPerDay: z.number().int().min(0).max(50).default(5),
+  /** 是否启用无头浏览器读视频（需要 playwright）；关掉后只能读评论、出草稿。 */
+  readVideo: z.boolean().default(true),
   /** 读视频时最多截几张图。每张图按 DeepSeek 的计费上限约 1024 token。 */
   maxFrames: z.number().int().min(1).max(8).default(6),
   /** 截图文件对外可访问的地址前缀；DeepSeek 自己下载，所以必须是公网可达的。 */

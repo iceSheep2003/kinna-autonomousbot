@@ -13,6 +13,8 @@ export interface BilibiliPluginOptions {
   /** 按热度选点 + 无头浏览器截图；由应用层注入。 */
   shots?: VideoShots;
   heat?: HeatSampler;
+  /** 取 DASH 流地址，截图需要真实流。 */
+  stream?: (input: { bvid: string; cid: number; signal: AbortSignal }) => Promise<string>;
   /** 截图对外可访问的地址前缀（DeepSeek 要能下载）。 */
   publicBaseUrl?: string;
   /** 轮询自己视频的评论，把别人对你说的话送进场景会话。 */
@@ -70,6 +72,7 @@ export function createBilibiliPlugin(deps: BilibiliPluginOptions): EnvironmentPl
       registerBilibiliTools(registry, {
         config, video: deps.video, messages: deps.messages, drafts: deps.drafts,
         ...(deps.shots ? { shots: deps.shots } : {}), ...(deps.heat ? { heat: deps.heat } : {}),
+        ...(deps.stream ? { stream: deps.stream } : {}),
         ...(deps.publicBaseUrl ? { publicBaseUrl: deps.publicBaseUrl } : {}),
       });
     },

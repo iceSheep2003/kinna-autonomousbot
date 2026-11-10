@@ -1,6 +1,6 @@
 import type { BilibiliMessages, BilibiliTransport, BilibiliVideo, VideoMeta } from '../../integrations/bilibili/ports.js';
 import { BilibiliError } from './client.js';
-import { pickStream } from './stream.js';
+import { pickStream, type PlayData } from './stream.js';
 
 interface ViewData {
   bvid: string; aid: number; cid: number; title: string; desc?: string; duration: number;
@@ -25,6 +25,15 @@ export class BilibiliApi implements BilibiliVideo, BilibiliMessages {
       bvid: view.bvid, aid: view.aid, cid: current?.cid ?? view.cid, title: view.title, desc: view.desc ?? '',
       ownerMid: String(view.owner?.mid ?? ''), ownerName: view.owner?.name ?? '', durationSeconds: view.duration, pages,
     };
+  }
+
+  /** 取 DASH 流地址：截图要用真实流，不是缩略图。 */
+  async streamUrl(input: { bvid: string; cid: number; signal: AbortSignal }): Promise<string> {
+    const play = await this.transport.request<PlayData>({
+      method: 'GET', path: '/x/player/wbi/playurl',
+      query: { bvid: input.bvid, cid: input.cid, fnval: 16, qn: 80, fourk: 0 }, signal: input.signal,
+    });
+    return pickStream(play);
   }
 
   async comments(input: { aid: number; bvid: string; limit: number; sort: 'time' | 'hot' }, signal: AbortSignal) {

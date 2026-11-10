@@ -1,4 +1,5 @@
 import type { Draft, PostKind, PostQuota, VideoMeta } from './types.js';
+import type { HeatSample } from './heat.js';
 
 /** 只是 B 站账号的读取与写回执；仓库不由模型可见。 */
 export interface BilibiliState {
@@ -27,6 +28,8 @@ export interface BilibiliRequest {
 
 export interface BilibiliTransport {
   request<T>(request: BilibiliRequest): Promise<T>;
+  /** 非 JSON 的接口（弹幕 XML）。 */
+  text(request: BilibiliRequest): Promise<string>;
   /** 下载视频流的指定时间片段（容器内异步暂存，不返回字节）。 */
   clip(request: { url: string; startSeconds: number; endSeconds: number; signal: AbortSignal; dir?: string; name?: string }): Promise<MediaClip>;
 }
@@ -51,16 +54,16 @@ export interface BilibiliMessages {
  * DeepSeek 看（它接受外部 URL 与多图输入）。这一层只返回稳定的图片 URL。
  */
 export interface VideoShots {
-  /** 截几个点；at 为空时由实现按热度自行选点。 */
-  capture(input: { bvid: string; timestamp: number; count: number; at?: number[]; signal: AbortSignal }): Promise<{ shots: Array<{ url: string; at: number }>; durationSeconds: number }>;
+  /** 在给定的几个秒数上截图；streamUrl 是 playurl 拿到的 DASH 地址。 */
+  capture(input: { bvid: string; streamUrl: string; at: number[]; signal: AbortSignal }): Promise<{ shots: Array<{ url: string; at: number }> }>;
 }
 
 /**
- * 高能进度条：B 站按采样间隔统计「每秒弹幕发送量」，也就是观众在哪些时刻最密集。
- * 它不是播放量的热度，而是**注意力**的热度：大部分人拖回去看、或者发弹幕的时刻都在里面。
+ * 观众在哪些秒有反应。取弹幕的时间戳（真实行为，不是播放量），失败返回 null。
+ * 不依赖 pbp 高能进度条：该接口在本机实测已 404，而弹幕是同一件事的原始证据。
  */
 export interface HeatSampler {
-  heat(input: { bvid: string; cid: number; signal: AbortSignal }): Promise<{ stepSeconds: number; points: number[] } | null>;
+  heat(input: { bvid: string; cid: number; aid: number; signal: AbortSignal }): Promise<HeatSample | null>;
 }
 
 export type { Draft, PostKind, PostQuota, VideoMeta };

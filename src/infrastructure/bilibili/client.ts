@@ -55,6 +55,14 @@ export class BilibiliHttp implements BilibiliTransport {
     return decode<T>(await response.json() as { code?: number; message?: string; data?: unknown });
   }
 
+  /** 弹幕等非 JSON 接口：同样带浏览器头与登录态，但返回原文。 */
+  async text(request: BilibiliRequest): Promise<string> {
+    const prepared = this.prepare(request);
+    const response = await fetch(prepared.url, { method: request.method, signal: request.signal, headers: headers(this.credentials, false) });
+    if (!response.ok) throw new BilibiliError(`B 站 HTTP ${response.status}`, response.status);
+    return response.text();
+  }
+
   /** URL、表单与 csrf 在这里一次性备好；调用方看不到 cookie。 */
   private prepare(request: BilibiliRequest): { url: URL; body?: string; json: boolean } {
     const url = new URL(request.path, request.base === 'vc' ? VC : API);

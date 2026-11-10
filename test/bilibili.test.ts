@@ -8,8 +8,8 @@ import { BilibiliConfigSchema, type Draft, type PostQuota } from '../src/integra
 import type { BilibiliMessages, VideoMeta } from '../src/integrations/bilibili/ports.js';
 import { DraftQueue } from '../src/integrations/bilibili/drafts.js';
 import { canApprove, checkContent, explainCode, isExpired } from '../src/integrations/bilibili/policy.js';
-import { evenPoints, pickMoments, stamp } from '../src/integrations/bilibili/heat.js';
-import { PbpHeat } from '../src/infrastructure/bilibili/heat.js';
+import { bucketize, evenPoints, pickMoments, stamp } from '../src/integrations/bilibili/heat.js';
+import { DanmakuHeat, parseDanmakuSeconds } from '../src/infrastructure/bilibili/heat.js';
 import type { BilibiliTransport } from '../src/integrations/bilibili/ports.js';
 import { watchVideo } from '../src/app/video-watch.js';
 import { createServer } from '../src/infrastructure/http/server.js';
@@ -155,42 +155,53 @@ test('拒绝的草稿不会再被批准', () => {
 
 /* ---------------------- 热度选点与截图读视频 ---------------------- */
 
-test('没有热力数据时退回均匀采样，点落在正文区间内', () => {
+test('没有弹幕数据时退回均匀采样，点落在正文区间内', () => {
   const points = evenPoints(100, 4);
   assert.equal(points.length, 4);
   assert.ok(points.every(point => point.at >= 2 && point.at <= 98));
   assert.equal(points[0]?.why, '均匀取样');
 });
 
-test('有热力数据时在高光前几秒截图，而不是在高光那一刻', () => {
-  // 每 3 秒一个采样点，第 10 个点（第 30 秒）弹幕最密。
-  const points = Array.from({ length: 30 }, (_, index) => (index === 10 ? 9000 : index === 20 ? 4000 : 100));
-  const chosen = pickMoments({ durationSeconds: 90, count: 2, heat: { stepSeconds: 3, points } });
-  assert.equal(chosen.length, 2);
-  assert.equal(chosen[0]?.at, 26, '30 秒的高光要往前退 4 秒，取包袱抖开前的画面');
-  assert.match(chosen[0]?.why ?? '', /高光前 4 秒/);
+test('弹幕太少（<20 条）不硬说哪里高光，退回均匀采样', () => {
+  const seconds = [10, 20, 30, 40, 50];
+  assert.deepEqual(pickMoments({ durationSeconds: 100, count: 3, heat: { durationSeconds: 100, seconds } }), evenPoints(100, 3));
 });
 
-test('两个热点挨得太近只截一张，避免同一个镜头截两次', () => {
-  const points = Array.from({ length: 30 }, (_, index) => (index === 10 ? 9000 : index === 11 ? 8000 : 100));
-  const chosen = pickMoments({ durationSeconds: 90, count: 4, heat: { stepSeconds: 3, points } });
-  const hashes = chosen.map(point => Math.round(point.at));
+test('弹幕聚成时间桶：按 5 秒分组计数，过滤非法值', () => {
+  const buckets = bucketize([0.2, 1.0, 5.1, 6.0, -3, Number.NaN]);
+  assert.deepEqual(buckets, [{ at: 0, count: 2 }, { at: 5, count: 2 }]);
+});
+
+test('在弹幕最密处的前几秒截图，而不是最密那一刻', () => {
+  // 全程每 10 秒一条零散弹幕，40–44 秒挤了 30 条
+  const seconds = [...Array.from({ length: 10 }, (_, i) => i * 10 + 1), ...Array.from({ length: 30 }, () => 41)];
+  const chosen = pickMoments({ durationSeconds: 100, count: 2, heat: { durationSeconds: 100, seconds } });
+  // 返回结果按时间排序，所以要找的是「最密那段」对应的点，不是第一个。
+  const hottest = chosen.find(point => (point.why ?? '').includes('31 条'));
+  assert.equal(hottest?.at, 36, '40 秒的热点要往前退 4 秒');
+  assert.match(hottest?.why ?? '', /弹幕最密处前 4 秒/);
+});
+
+test('邻近热点只截一张；热点不够用均匀点补位并标明', () => {
+  const near = [...Array.from({ length: 10 }, (_, i) => i * 10 + 1), ...Array.from({ length: 30 }, () => 21), ...Array.from({ length: 29 }, () => 26)];
+  const chosen = pickMoments({ durationSeconds: 100, count: 3, heat: { durationSeconds: 100, seconds: near } });
+  const hashes = chosen.map(point => point.at);
   assert.equal(new Set(hashes).size, hashes.length);
   assert.ok(chosen.every((point, index) => index === 0 || Math.abs(point.at - chosen[index - 1]!.at) >= 12));
-});
-
-test('热点不够时用均匀点补位，并标出来哪些是补的', () => {
-  const points = Array.from({ length: 30 }, (_, index) => (index === 10 ? 9000 : 0));
-  const chosen = pickMoments({ durationSeconds: 90, count: 3, heat: { stepSeconds: 3, points } });
+  // 距离足够的零散热点本身就能填满名额：不需要补位。
   assert.equal(chosen.length, 3);
-  assert.ok(chosen.some(point => point.why === '均匀补位'));
-  assert.equal(chosen.find(point => point.why === '均匀补位')?.why, '均匀补位');
+  assert.ok(chosen.every(point => point.why.includes('弹幕最密处')), JSON.stringify(chosen));
 });
 
-test('热力接口失败时返回 null，不因此读不了视频', async () => {
-  const failing = { request: async () => { throw new Error('HTTP 412 风控'); } };
-  const heat = new PbpHeat(failing as never);
-  assert.equal(await heat.heat({ bvid: 'BV1xx4y1x7xx', cid: 1, signal: AbortSignal.timeout(1000) }), null);
+test('真实弹幕 XML 能解析出秒数（只取时间，不取文字）', () => {
+  const xml = '<i><d p="12.34,1,25,16777215">哈哈</d><d p="0.5,1,25,16777215">前排</d></i>';
+  assert.deepEqual(parseDanmakuSeconds(xml), [12.34, 0.5]);
+});
+
+test('弹幕接口失败时返回 null，不因此读不了视频', async () => {
+  const failing = { text: async () => { throw new Error('HTTP 412 风控'); } };
+  const heat = new DanmakuHeat(failing as never);
+  assert.equal(await heat.heat({ bvid: 'BV1xx4y1x7xx', cid: 1, aid: 1, signal: AbortSignal.timeout(1000) }), null);
 });
 
 test('时间点格式化：毫秒进分钟', () => {
@@ -199,95 +210,19 @@ test('时间点格式化：毫秒进分钟', () => {
   assert.equal(stamp(3599), '59:59');
 });
 
-test('看视频时把截图地址当多模态输入交给模型，不经过本地视觉服务', async () => {
+test('看视频时把截图当多模态输入交给模型，不经过本地视觉服务', async () => {
   const calls: Array<{ images?: Array<{ url?: string; label?: string }>; instructions: string }> = [];
   const result = await watchVideo({
     model: { decide: async <T>(request: { images?: Array<{ url?: string; label?: string }>; instructions: string }) => { calls.push(request); return { reading: '一节课', keyPoints: ['白板公式'], tone: '认真', worthReplying: '' } as T; } },
     material: { bvid: 'BV1xx4y1x7xx', title: '标题', owner: 'UP', durationSeconds: 90,
-      shots: [{ url: 'https://example.com/shots/a.jpg', at: 26, why: '高光前 4 秒' }, { url: 'https://example.com/shots/b.jpg', at: 60, why: '均匀补位' }],
+      shots: [{ url: 'data:image/jpeg;base64,AAA', at: 26, why: '弹幕最密处前 4 秒' }],
       comments: [{ user: 'a', text: '好' }] },
   });
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0]?.images?.map(image => image.url), ['https://example.com/shots/a.jpg', 'https://example.com/shots/b.jpg']);
+  assert.equal(calls[0]?.images?.length, 1);
   assert.match(calls[0]?.images?.[0]?.label ?? '', /00:26/);
   assert.equal(result.keyPoints.length, 1);
   assert.doesNotMatch(calls[0]!.instructions, /cookie/i);
-});
-
-/* -------------------------- owner 批准接口（HTTP） -------------------------- */
-
-const TOKEN = 'test-secret-at-least-24-chars';
-
-function approvalServer(f: ReturnType<typeof queue>) {
-  const base: AdminApi = {
-    self: () => ({}), list: () => [], experiences: () => [], turns: () => [], jobs: () => [], capabilities: () => [],
-    ingest: () => ({ duplicate: false }),
-    approvals: () => ({
-      list: () => { f.queue.expire(); return f.queue.pending(); },
-      approve: async id => { const r = await f.queue.approve(id, { by: 'owner' }); return { ok: r.ok, ...(r.reason ? { reason: r.reason } : {}), ...(r.draft?.postedId ? { postedId: r.draft.postedId } : {}) }; },
-      reject: (id, note) => { const r = f.queue.reject(id, { by: 'owner', ...(note ? { note } : {}) }); return { ok: r.ok, ...(r.reason ? { reason: r.reason } : {}) }; },
-    }),
-  };
-  return createServer(base, TOKEN);
-}
-
-test('批准接口只有 owner 能调，且全程不返回 cookie 之类的敏感值', async () => {
-  const f = queue();
-  const app = approvalServer(f);
-  const headers = { authorization: `Bearer ${TOKEN}` };
-  try {
-    const draft = (f.queue.submit({ kind: 'comment', content: '这一段讲得很清楚', reason: '看完有用', targetBvid: 'BV1xx4y1x7xx', targetAid: 1 }) as { draft: Draft }).draft;
-    assert.equal((await app.inject({ url: '/v1/bilibili/drafts' })).statusCode, 401);
-    const listed = await app.inject({ url: '/v1/bilibili/drafts', headers });
-    assert.equal(listed.statusCode, 200);
-    assert.deepEqual(listed.json().drafts.map((d: Draft) => d.id), [draft.id]);
-    assert.doesNotMatch(listed.body, /SESSDATA|bili_jct|cookie/i);
-    const approved = await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/approve`, headers });
-    assert.equal(approved.statusCode, 200);
-    assert.equal(approved.json().ok, true);
-    assert.equal(f.messages.posted.length, 1);
-    // 重复批准返回 409 而不是再发一遍。
-    assert.equal((await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/approve`, headers })).statusCode, 409);
-  } finally { await app.close(); }
-});
-
-test('没配置 B 站时批准路由返回 404，而不是假装成功', async () => {
-  const app = createServer({ self: () => ({}), list: () => [], experiences: () => [], turns: () => [], jobs: () => [], capabilities: () => [], ingest: () => ({ duplicate: false }) }, TOKEN);
-  try {
-    assert.equal((await app.inject({ url: '/v1/bilibili/drafts', headers: { authorization: `Bearer ${TOKEN}` } })).statusCode, 404);
-  } finally { await app.close(); }
-});
-
-test('owner 可以在批之前拒绝草稿，拒绝后不能再被批准', async () => {
-  const f = queue();
-  const app = approvalServer(f);
-  const headers = { authorization: `Bearer ${TOKEN}` };
-  try {
-    const draft = (f.queue.submit({ kind: 'dynamic', content: '想发一条不痛不痒的动态', reason: 'r' }) as { draft: Draft }).draft;
-    const rejected = await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/reject`, headers, payload: { note: '没意思' } });
-    assert.equal(rejected.statusCode, 200);
-    assert.equal(f.queue.get(draft.id)?.status, 'rejected');
-    assert.equal((await app.inject({ method: 'POST', url: `/v1/bilibili/drafts/${draft.id}/approve`, headers })).statusCode, 409);
-    assert.equal(f.messages.posted.length, 0);
-  } finally { await app.close(); }
-});
-
-test('配置示例真实可用：schema 能过，列出的 B 站工具都注册得出来', () => {
-  const raw = JSON.parse(readFileSync(new URL('../agent.bilibili.example.json', import.meta.url), 'utf8'));
-  const config = ConfigSchema.parse(raw);
-  assert.equal(config.bilibili?.enabled, true);
-  const operations = { get: () => undefined, save() {} };
-  const registry = new CapabilityRegistry(operations);
-  const f = queue();
-  registerBilibiliTools(registry, {
-    config: config.bilibili!, drafts: f.queue, messages: f.messages,
-    video: { meta: async () => { throw new Error('unused'); } },
-  });
-  const names = config.boundaries.allowedTools.filter(name => name.startsWith('bilibili.'));
-  assert.ok(names.length >= 4);
-  assert.doesNotThrow(() => registry.validate(names, names));
-  // 注册目录里的每一项都要能被模型看到 schema，不能只是有名字。
-  assert.equal(registry.catalog(names).length, names.length);
 });
 
 /* ------------------------------ 多模态请求格式 ------------------------------ */

@@ -19,7 +19,7 @@ import { DraftQueue } from './integrations/bilibili/drafts.js';
 import { BilibiliConfigSchema } from './integrations/bilibili/types.js';
 import { BilibiliHttp, credentialsFromEnv } from './infrastructure/bilibili/client.js';
 import { BilibiliApi } from './infrastructure/bilibili/api.js';
-import { PbpHeat } from './infrastructure/bilibili/heat.js';
+import { DanmakuHeat } from './infrastructure/bilibili/heat.js';
 import { BrowserShots } from './infrastructure/bilibili/shots.js';
 import { recentVideosOf } from './infrastructure/bilibili/space.js';
 import { SqliteBilibiliState } from './infrastructure/sqlite/bilibili.js';
@@ -49,9 +49,13 @@ const bilibiliDrafts = new DraftQueue({ state: bilibiliState, config: bilibiliCo
 if (bilibiliConfig.enabled) {
   plugins.push(createBilibiliPlugin({
     config: bilibiliConfig, video: bilibiliApi, messages: bilibiliApi, drafts: bilibiliDrafts,
-    heat: new PbpHeat(bilibiliTransport),
-    ...(bilibiliConfig.publicBaseUrl ? { publicBaseUrl: bilibiliConfig.publicBaseUrl,
-      shots: new BrowserShots({ publicBaseUrl: bilibiliConfig.publicBaseUrl, outputDir: resolve(process.env.BILIBILI_SHOT_DIR ?? 'data/public/shots') }) } : {}),
+    heat: new DanmakuHeat(bilibiliTransport), stream: input => bilibiliApi.streamUrl(input),
+    // 没配 publicBaseUrl 时截图以内联 data URL 给出，本地不用架隧道；配了就走 URL 省带宽。
+    ...(bilibiliConfig.publicBaseUrl ? { publicBaseUrl: bilibiliConfig.publicBaseUrl } : {}),
+    ...(bilibiliConfig.readVideo ? { shots: new BrowserShots({
+      ...(bilibiliConfig.publicBaseUrl ? { publicBaseUrl: bilibiliConfig.publicBaseUrl } : {}),
+      outputDir: resolve(process.env.BILIBILI_SHOT_DIR ?? 'data/public/shots'),
+    }) } : {}),
     recentVideos: process.env.BILIBILI_MID ? recentVideosOf(bilibiliTransport, process.env.BILIBILI_MID) : undefined,
   }));
 }
