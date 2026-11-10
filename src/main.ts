@@ -21,6 +21,8 @@ import { BilibiliHttp } from './infrastructure/bilibili/client.js';
 import { BilibiliLogin } from './infrastructure/bilibili/login.js';
 import { SqliteSessionStore } from './infrastructure/sqlite/bilibili-session.js';
 import { SessionHost } from './app/bilibili-session.js';
+import { TodoBoard } from './integrations/bilibili/todo-board.js';
+import { SqliteTodoStore } from './infrastructure/sqlite/bilibili-todo.js';
 import { credentialsOf, sessionFromEnv } from './integrations/bilibili/session.js';
 import { BilibiliApi } from './infrastructure/bilibili/api.js';
 import { DanmakuHeat } from './infrastructure/bilibili/heat.js';
@@ -55,9 +57,13 @@ if (envSession && !sessionStore.read()) sessionHost.adopt(envSession);
 const bilibiliTransport = new BilibiliHttp(credentialsOf(sessionHost.session()), reason => sessionHost.markInvalid(reason));
 const bilibiliApi = new BilibiliApi(bilibiliTransport);
 const bilibiliDrafts = new DraftQueue({ state: bilibiliState, config: bilibiliConfig, messages: bilibiliApi });
+// 每日任务：只看「今天还差几条」，具体看哪条由 self 自己挑。提醒走 self 的 inbox。
+const todoBoard = new TodoBoard({ store: new SqliteTodoStore(store), notify: (kind, data, now) => runtime.ingest({
+  id: `${kind}:${now}`, source: 'bilibili', kind, data, route: { type: 'self' },
+}), timezone: process.env.BILIBILI_TZ ?? 'Asia/Shanghai', quota: bilibiliConfig.dailyVideos });
 if (bilibiliConfig.enabled) {
   plugins.push(createBilibiliPlugin({
-    config: bilibiliConfig, video: bilibiliApi, messages: bilibiliApi, drafts: bilibiliDrafts,
+    config: bilibiliConfig, video: bilibiliApi, messages: bilibiliApi, drafts: bilibiliDrafts, todo: todoBoard,
     heat: new DanmakuHeat(bilibiliTransport), stream: input => bilibiliApi.streamUrl(input),
     // 没配 publicBaseUrl 时截图以内联 data URL 给出，本地不用架隧道；配了就走 URL 省带宽。
     ...(bilibiliConfig.publicBaseUrl ? { publicBaseUrl: bilibiliConfig.publicBaseUrl } : {}),
@@ -70,12 +76,14 @@ if (bilibiliConfig.enabled) {
 }
 const model = new OpenAICompatibleModel({ baseUrl: process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1', apiKey: LLM_API_KEY, model: LLM_MODEL, profiles: profilesFromEnv(process.env) });
 const agent = composeAgent(repositories, model, capabilities, { ...config, dreamLock: createDreamLock(resolve(process.env.DREAM_LOCK_PATH ?? 'data/dream.lock')) });
+const runtime = agent.runtime;
 registerMemory(capabilities, agent.memory, agent.experience);
 registerNotes(capabilities, agent.experience);
 registerConversation(capabilities, agent.experience);
 capabilities.validate(config.boundaries.allowedTools, config.boundaries.allowedTools);
-const runtime = agent.runtime;
 runtime.start();
+// 每小时问一次「今天还差几条」，够了就不打扰。
+setInterval(() => { try { todoBoard.remind(); } catch (error) { console.log('[bilibili] todo remind failed:', String(error)); } }, 3600_000).unref();
 for (const plugin of plugins) await plugin.start?.({ emit: event => { runtime.ingest(event); } });
 const adminApi = sqliteAdmin(store, agent);
 // 只有 owner 令牌能走到这里；模型没有任何工具能调用 approvals。
@@ -106,7 +114,8 @@ const bilibiliAuth = bilibiliConfig.enabled ? {
 } : undefined;
 const app = createServer({ ...adminApi,
   ...(approvals ? { approvals: () => approvals } : {}),
-  ...(bilibiliAuth ? { bilibiliAuth: () => bilibiliAuth } : {}) }, API_TOKEN);
+  ...(bilibiliAuth ? { bilibiliAuth: () => bilibiliAuth } : {}),
+  ...(bilibiliConfig.enabled ? { bilibiliTodo: () => todoBoard } : {}) }, API_TOKEN);
 // 启动后每天检查一次 Cookie 是否需要刷新；失败只记日志，不影响其他能力。
 setInterval(() => { void sessionHost.ensureFresh().then(result => {
   if (result.refreshed) console.log('[bilibili] session refreshed');

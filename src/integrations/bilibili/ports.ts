@@ -1,5 +1,6 @@
 import type { Draft, PostKind, PostQuota, VideoMeta } from './types.js';
 import type { HeatSample } from './heat.js';
+import type { TodoDay } from './todo.js';
 
 /** 只是 B 站账号的读取与写回执；仓库不由模型可见。 */
 export interface BilibiliState {
@@ -11,6 +12,16 @@ export interface BilibiliState {
   saveQuota(quota: PostQuota): void;
   /** 最近发出的公开动作，供主动频率与去重使用。 */
   recentPosts(limit: number): Draft[];
+}
+
+/** 每日任务（todo）的读取：只存「今天做了几条」，不存视频内容。 */
+export interface BilibiliTodoStore {
+  read(): TodoDay | undefined;
+  save(day: TodoDay): void;
+  /** 最近若干天的记录，用于看板与「昨天为什么没做完」。 */
+  history(days: number): TodoDay[];
+  lastRemindedAt?(): number;
+  markReminded?(at: number): void;
 }
 
 /** 一次 B 站 HTTP 调用。凭证由传输层持有，能力与模型都拿不到。 */

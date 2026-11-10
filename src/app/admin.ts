@@ -24,6 +24,9 @@ export interface BilibiliAuth {
   logout(): { ok: boolean };
 }
 
+/** 每日任务看板：只读，给人和 self 之外的管理入口看进度。 */
+export interface BilibiliTodoView { view(): unknown; remind(): { remaining: number; sent: boolean } }
+
 /** HTTP 只拿读模型和事件投递口，不拿仓库或领域写服务。 */
 export interface AdminApi {
   self(): unknown;
@@ -37,4 +40,6 @@ export interface AdminApi {
   approvals?(): BilibiliApproval;
   /** 可选：B 站登录托管。没配置 B 站时不存在。 */
   bilibiliAuth?(): BilibiliAuth;
+  /** 可选：B 站每日任务看板。 */
+  bilibiliTodo?(): BilibiliTodoView;
 }

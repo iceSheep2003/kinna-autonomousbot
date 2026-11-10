@@ -5,6 +5,7 @@ import type { BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from '.
 import type { DraftQueue } from './drafts.js';
 import { canReadVideo } from './policy.js';
 import { pickMoments } from './heat.js';
+import type { TodoBoard } from './todo-board.js';
 import { VIDEO_REF } from './types.js';
 
 export interface BilibiliToolsDeps {
@@ -19,6 +20,8 @@ export interface BilibiliToolsDeps {
   /** 截图文件对外可访问的地址前缀；DeepSeek 靠它下载图片。 */
   publicBaseUrl?: string;
   drafts: DraftQueue;
+  /** 每日任务看板；没配置时 todo 工具不注册。 */
+  todo?: TodoBoard;
 }
 
 const VIDEO = z.string().regex(VIDEO_REF, '视频号形如 BV1xx4y1x7xx');
@@ -52,7 +55,8 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
   });
 
   registry.register({
-    name: 'bilibili.draft_comment', description: '回复某个视频（或某条评论）。按配置的策略，可能直接发出，也可能先存成草稿等人批准——返回值会说明是哪一种。',
+    name: 'bilibili.draft_comment', description: '回复某个视频（或某条评论）。按配置的策略，可能直接发出，也可能先存成草稿等人批准——返回值会说明是哪一种。'
+      + '。想让评论像真人：说你看完后的具体感受或疑问，不要复述标题、不要用「这个视频真不错」这类空话，也不要写「我是AI」或自我介绍；你不必假装是人，但也别机器腔。',
     effect: 'read', input: z.object({ bvid: VIDEO, message: z.string().min(1).max(1000), reason: z.string().min(1).max(500), replyToRpid: z.number().int().positive().optional() }),
     async run(raw, { signal }) {
       const input = raw as { bvid: string; message: string; reason: string; replyToRpid?: number };
@@ -66,7 +70,8 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
   });
 
   registry.register({
-    name: 'bilibili.draft_dynamic', description: '发一条纯文本动态。按配置的策略，可能直接发出，也可能先存成草稿等人批准——返回值会说明是哪一种。',
+    name: 'bilibili.draft_dynamic', description: '发一条纯文本动态。按配置的策略，可能直接发出，也可能先存成草稿等人批准——返回值会说明是哪一种。'
+      + '。像随手记一句：提一件具体的事，别写成总结或通知。',
     effect: 'read', input: z.object({ content: z.string().min(1).max(2000), reason: z.string().min(1).max(500) }),
     async run(raw) {
       const input = raw as { content: string; reason: string };
@@ -98,6 +103,8 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
     },
   });
 
+  if (deps.todo) registerTodoTools(registry, deps.todo);
+
   registry.register({
     name: 'bilibili.quotas', description: '查今天还能发几条评论、几条动态，以及有没有在等人批准的草稿。开口前先看一眼，别把话说满。',
     effect: 'read', input: z.object({}),
@@ -107,6 +114,44 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
         dynamic: { used: drafts.used('dynamic'), remaining: drafts.remaining('dynamic'), policy: config.dynamicPolicy },
         pendingDrafts: drafts.pending().map(publicDraft),
       };
+    },
+  });
+}
+
+/**
+ * 每日任务工具。self 读看板 → 自己挑视频 → 看视频 → 评论（真实的那个工具）→ 回来登记完成。
+ * 「完成」要求带平台回执，没发出去的不能自己记成完成。
+ */
+function registerTodoTools(registry: CapabilityRegistrar, todo: TodoBoard): void {
+  registry.register({
+    name: 'bilibili.todo', description: '今天的 B 站日常：还差几条、每条做到哪了。开始前先看一眼，别把同一件事做两遍。',
+    effect: 'read', input: z.object({}),
+    async run() { const view = todo.view(); return { ...view, summary: view.remaining === 0 ? '今天的份做完了' : `还差 ${view.remaining} 条` }; },
+  });
+  registry.register({
+    name: 'bilibili.todo_claim', description: '把一条日常任务绑到你要看的视频上，返回条目 id。',
+    effect: 'read', input: z.object({ bvid: VIDEO }),
+    async run(raw) {
+      const input = raw as { bvid: string };
+      const item = todo.claim(input.bvid);
+      return item ? { item } : { refused: '今天的配额已经用完了' };
+    },
+  });
+  registry.register({
+    name: 'bilibili.todo_done', description: '登记完成一条。必须带上刚才评论的真实回执（rpid），没有回执不能算完成。',
+    effect: 'read', input: z.object({ itemId: z.string().min(1).max(64), rpid: z.union([z.string(), z.number()]) }),
+    async run(raw) {
+      const input = raw as { itemId: string; rpid: string | number };
+      const ok = todo.complete(input.itemId, `rpid:${input.rpid}`);
+      return ok ? { ok: true } : { ok: false, reason: '条目不存在或不是待办状态' };
+    },
+  });
+  registry.register({
+    name: 'bilibili.todo_skip', description: '今天这条不做了（比如没找到值得评论的），写清原因。不算失败，但要有理由。',
+    effect: 'read', input: z.object({ itemId: z.string().min(1).max(64), reason: z.string().min(1).max(300) }),
+    async run(raw) {
+      const input = raw as { itemId: string; reason: string };
+      return todo.skip(input.itemId, input.reason) ? { ok: true } : { ok: false, reason: '条目不存在或不是待办状态' };
     },
   });
 }

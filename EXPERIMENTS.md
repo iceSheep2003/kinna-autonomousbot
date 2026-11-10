@@ -280,6 +280,7 @@ MAX_CALLS=6 GATE_MIN_EPISODES=200 GATE_SALIENCE=999 npx tsx scripts/evaluate.ts
   `sampling?.timeoutMs ?? timeoutMs ?? profile.timeoutMs` 把分支塞进了 `decide`；
   抽出 `timeoutOf()` 后通过。
 - `node scripts/junit.mjs`：JUnit 76 用例、0 失败、0 跳过。
+- 2026-11-10 新增 B 站每日任务（todo）：按本地时区跨日结算、配额（默认每天 3 条）、完成必须带回执、每小时提醒一次。**未接真实模型跑过完整一天**，所以「self 会不会自己挑视频、写不写得出像人的评论、会不会无人值守跑满 3 条」都还没有实测数据；10 个 todo 单测只覆盖状态机与配额。
 - 2026-11-10 B 站写接口**实测全部可用**：用真实会话发出了评论（rpid 319757565265）与动态（id 1268939446139486217），`code:0` 且返回真实 id；随后用 `x/v2/reply/del` 与 `rm_dynamic` 删除，动态回读为「动态不可见」。**教训**：此前用空内容探测写接口，旧接口把空串当成合法内容真的发出了一条空动态（已删除），说明「用非法参数探测写接口」本身就会产生副作用，不该这么做。新接口 `x/dynamic/feed/create/dyn` 对空 `contents` 返回 -400。
 - 2026-11-10 B 站登录与托管：**真实扫码登录跑通**（账号 ew-kinna / mid 3632307483183498，`nav.isLogin=true`，拿到 SESSDATA、bili_jct 与 refresh_token，已落进 `data/agent.sqlite`）。**自动续期实测不可用**：`/x/passport-login/web/cookie/info` 直连 passport 域正常（返回 `refresh:false`），但取 `refresh_csrf` 必需的 `/correspond/1/{path}` 在 www 与 passport 都 404（匿名同样 404），属前端改版导致的路径失效；已让代码如实报告「自动续期不可用，到期需重新扫码」而不是假装成功。不做密码登录：要过风控验证码，且在服务器存密码本身是风险。136/136 通过；cqg audit PASS。
 - 2026-11-10 读视频定稿为「弹幕时间分布选点 + 无头浏览器渲染 DASH 流截图 + DeepSeek 直接看图」。**本机实测跑通**：`BV1GJ411x7h7` 拉到 1200 条弹幕，选出 6.4s/36s/51s 三个点，截出 48/58/69KB 的真实画面（人工核对：教堂内景、街头镜头，无弹幕遮挡）；用编译后的 `dist` 再跑一遍同样成功，说明服务器路径一致。实测还否掉了两件事：`/x/player/pbp/data` 已 404（所以改用弹幕），以及在 B 站播放页里无头截图会卡住（所以改成本地渲染 playurl 的流）。**仍未验证**：`.env` 的 key 余额不足，一次真实多模态请求都没发出去，所以「DeepSeek 能否从这些截图读懂视频」没有实测；`src/integrations/bilibili/heat.ts` 的选点与 125/125 验收用例均用假数据。

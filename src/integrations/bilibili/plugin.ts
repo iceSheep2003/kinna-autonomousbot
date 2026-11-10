@@ -2,6 +2,7 @@ import type { EnvironmentPlugin } from '../plugin.js';
 import type { IncomingEvent } from '../../runtime/types.js';
 import type { BilibiliConfig } from './types.js';
 import type { BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
+import type { TodoBoard } from './todo-board.js';
 import type { DraftQueue } from './drafts.js';
 import { registerBilibiliTools } from './tools.js';
 
@@ -17,6 +18,8 @@ export interface BilibiliPluginOptions {
   stream?: (input: { bvid: string; cid: number; signal: AbortSignal }) => Promise<string>;
   /** 截图对外可访问的地址前缀（DeepSeek 要能下载）。 */
   publicBaseUrl?: string;
+  /** 每日任务看板；不配置时 todo 系列工具不注册。 */
+  todo?: TodoBoard;
   /** 轮询自己视频的评论，把别人对你说的话送进场景会话。 */
   pollMs?: number;
   /** 读自己空间最近的投稿；不提供时不做评论轮询（仍可用读/写草稿能力）。 */
@@ -72,7 +75,7 @@ export function createBilibiliPlugin(deps: BilibiliPluginOptions): EnvironmentPl
       registerBilibiliTools(registry, {
         config, video: deps.video, messages: deps.messages, drafts: deps.drafts,
         ...(deps.shots ? { shots: deps.shots } : {}), ...(deps.heat ? { heat: deps.heat } : {}),
-        ...(deps.stream ? { stream: deps.stream } : {}),
+        ...(deps.stream ? { stream: deps.stream } : {}), ...(deps.todo ? { todo: deps.todo } : {}),
         ...(deps.publicBaseUrl ? { publicBaseUrl: deps.publicBaseUrl } : {}),
       });
     },

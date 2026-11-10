@@ -146,6 +146,17 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
 - 批准与撤回：`POST /v1/bilibili/drafts/:id/approve` 只有持 `API_TOKEN` 的人能调；`bilibili.delete_post` 可撤回自己发过的评论/动态。
 - 已实测的写接口：`dynamic_svr/v1/dynamic_svr/create`（发动态）、`x/v2/reply/add`（发评论）、`x/v2/reply/del` 与 `rm_dynamic`（删除）。
 
+### 每日任务（todo）
+
+目标不是「偶尔发一条」，而是**每天稳定地看三条、评论三条**。
+
+- 看板：`GET /v1/bilibili/todo` 显示今天做了几条、还差几条、最近 7 天记录；`POST /v1/bilibili/todo/remind` 让 self 立刻收到提醒。
+- 每日配额由 `bilibili.dailyVideos` 决定（默认 3）。**每小时检查一次**，只把「今天还差几条」放进 self 的 inbox，不催命、不重复刷。
+- 跨日自动结算：昨天没做完的记为 `missed`（不是失败），主动决定不做的记为 `skipped`（要写理由）。
+- 完成必须带真实回执：`bilibili.todo_done` 要求评论的 `rpid`，没发出去的不能自己记成完成。
+- 工具的产出是**素材**：self 自己挑视频 → 看（截图）→ 写评论 → 登记。像真人一样评论的提示写在工具描述里（说具体感受或疑问，不复述标题、不写「我是 AI」、不机器腔）。
+- `dailyVideos: 0` 关掉日常；不配置看板时 todo 工具不注册。
+
 ### 登录与托管
 
 不需要在服务器上存账号密码：用**扫码登录**拿会话。
