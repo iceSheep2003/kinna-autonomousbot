@@ -89,7 +89,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   // 一个人格，多个场合：self 和 scene 拿同一份；execution / dream 不发挥偏好。
   const personality = options.personal === false ? undefined : options.personality ?? defaultPersonality;
   const experience = new ExperienceService(r.experience);
-  const memory = new MemoryService(r.memory);
+  // 提升也记进同一条流水，事后能追「这条通用记忆是哪次、凭什么提上来的」。
+  const memory = new MemoryService(r.memory, {}, experience);
   const reflections = new ReflectionService(r.reflection, experience);
   const { gate, checkDream } = wireGate({ repositories: r, experience, options });
   const subject = new SubjectService(r.subject, new GoalService(r.goals, experience), new AffectService(r.subject, experience));

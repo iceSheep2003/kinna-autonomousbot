@@ -101,6 +101,11 @@ export const DreamRoundSchema = z.object({
   })).max(30).optional(),
   /** 撤回：回放后发现这句不成立。 */
   retractions: z.array(z.object({ id, reason: text.max(500).optional() })).max(30).optional(),
+  /**
+   * 提到「所有场合都适用」那一层：这条不在某个场合才成立。
+   * 判断由模型自己做，没有人工审核环节；执行时只做结构上的拦截。
+   */
+  promotions: z.array(z.object({ id, why: text.max(200) })).max(10).optional(),
   /** 翻出来的机会：想做但还没做的事。只给 self 当素材，不会直接变成任何动作。 */
   opportunities: z.array(OpportunitySchema).max(OPPORTUNITY_MAX_ITEMS).optional(),
   failedApproaches: z.array(text).max(20).optional(),

@@ -1,87 +1,63 @@
 import type { Memory } from './types.js';
-import { parseScope } from './scope.js';
 
 /**
- * 「这条其实该放在通用层」的建议。
+ * 把只属于某个场合的记忆，提到「所有场合都适用」那一层。
  *
- * 线上 287 条真实记忆里，**owner 层是空的**——所有记忆都挂在某个群下面。
- * 于是「用户希望回答更有人味」这种跟哪个群无关的偏好，换一个群就等于没学过。
+ * 这里没有「给人审核」这一环——整套系统是自运行的，没有人坐在那里点同意。
+ * 所以判断必须由模型自己做，代码只做三件事：
  *
- * 但自动提升很危险：把 A 群的事搬成通用记忆，等于在 B 群泄露 A 群。
- * 所以这里只**给建议**，由人确认后才真的提升。
+ * 1. 告诉模型**判据**（下面这段 PROMPT 会进 Dream 的指令）；
+ * 2. 执行提升（复制到 owner 层，不删原记录）；
+ * 3. 防止明显的错搬（跨 bot、已经在外面的、原文里明确说「这个群」的）。
  *
- * 判断用启发式，会有误报——正因为如此才不能自动执行。
+ * 为什么用复制而不是移动：判断错了还能退回原场景，删除比新增难挽回得多。
  */
-export interface PromotionCandidate {
-  memory: Memory;
-  from: string;
-  reason: string;
-}
+export const PROMOTION_PROMPT = `有些事只在一个地方成立：这个群里某人的近况、某次对话的细节。
+有些事换个地方也一样：他喜欢别人怎么称呼、哪些话题别碰、他一贯的判断方式。
+后者应该记在「所有场合都适用」那一层，否则你换个群就像从没认识过他。
 
-/** 明确只属于某个场合的说法：提到"这个群/本群/群里"就不建议提升。 */
-const SCOPED_HINTS = ['这个群', '本群', '群里', '群内', '本群里', '这群'];
+判断标准：
+- 讲的是**他的稳定偏好或看法**（「希望回答更有人味」「认为工作地点比名气重要」）→ 提到通用层
+- 讲的是**一次性的安排**（「计划国庆休息 13 天」）→ 留在原处
+- 讲的是**这个群里发生的事**（「这个群在聊考研」）→ 留在原处
+- **边界和禁忌**（哪些话不该提）→ 几乎总是通用的，换哪个群都该守
 
-/**
- * 具体安排 vs 稳定偏好。
- *
- * 真实数据里的坑：「玩家计划在国庆中秋休息 13 天」被标成 preference，
- * 但它是一次性的安排，提升成通用记忆就会在别的场合被当成长期事实。
- * 所以偏好要**有观点词**才算稳定偏好；带计划/时间词的按具体安排处理。
- */
-const STANCE_HINTS = ['认为', '觉得', '希望', '喜欢', '不喜欢', '讨厌', '偏好', '更愿意', '宁可', '重视'];
-const PLAN_HINTS = ['计划', '打算', '准备', '今天', '明天', '昨天', '刚刚', '刚才', '上周', '下周'];
+宁可少提，不可错搬：把 A 群的事搬成通用记忆，等于在 B 群把它说出来。`;
 
-/** 提到具体某个人近况的，通常只在该场合有意义。 */
-const PERSONAL_EVENT_HINTS = ['刚刚', '今天说', '昨天说', '刚才', '刚才说'];
-
-/**
- * 挑出看起来普适的记忆。判据从强到弱：
- * 1. boundary（边界/禁忌）——「别提这件事」不分场合，最该通用；
- * 2. preference 且不带场合限定词——偏好跨场景成立；
- * 3. 其它 type 不主动建议（宁可漏，不可错搬）。
- */
-export function suggestPromotions(memories: readonly Memory[], limit = 20): PromotionCandidate[] {
-  const out: PromotionCandidate[] = [];
-  for (const memory of memories) {
-    const from = memory.scope ?? 'owner';
-    // 已经是通用的不用再提
-    if (from === 'owner' || !from.includes(':')) continue;
-    // 只看场景层；bot 自己的状态不往 owner 搬
-    const kind = parseScope(from).kind;
-    if (kind === 'bot') continue;
-    const reason = why(memory);
-    if (reason === '') continue;
-    out.push({ memory, from, reason });
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
-/** 给出理由；空串表示不建议提升。 */
-function why(memory: Memory): string {
-  const text = memory.content;
-  const scoped = SCOPED_HINTS.some(hint => text.includes(hint));
-  const personal = PERSONAL_EVENT_HINTS.some(hint => text.includes(hint));
-  if (memory.factType === 'boundary') {
-    return scoped ? '' : '边界/禁忌不分场合，换一个群也应该遵守';
-  }
-  if (memory.factType === 'preference') {
-    if (scoped || personal) return '';
-    // 有观点词、且不是一次性安排，才算稳定偏好。
-    const stance = STANCE_HINTS.some(hint => text.includes(hint));
-    const plan = PLAN_HINTS.some(hint => text.includes(hint));
-    if (plan || !stance) return '';
-    return '这是稳定的偏好/看法，跨场合都成立，不该只在遇到它的地方才算数';
-  }
-  return '';
+/** 模型判断要用的那条记忆的摘要：scope 也要给它，否则它不知道这条现在挂在哪。 */
+export function describeForPromotion(memory: Memory): string {
+  return `[${memory.scope ?? 'owner'}] ${memory.factType ?? 'fact'} | ${memory.content.slice(0, 160)}`;
 }
 
 /**
- * 应用提升：把选中的记忆复制到 owner 层（保留原记录）。
- *
- * **不删除原记录**：万一判断错了，原场景里还有一份；
- * 删除要比新增难挽回得多。
+ * 硬性拦截：这些情况不执行提升，哪怕模型要求。
+ * 不是替模型判断"该不该"，而是拦住**结构上说不通**的操作。
  */
-export function applyPromotion(memory: Memory, now: number): Memory {
-  return { ...memory, id: `${memory.id}@owner`, scope: 'owner', revision: memory.revision + 1, updatedAt: now };
+export function refusePromotion(memory: Memory | undefined, now: number): string | undefined {
+  if (!memory) return '没有这条记忆';
+  const scope = memory.scope ?? 'owner';
+  if (scope === 'owner') return '这条已经在通用层了';
+  if (scope.startsWith('bot:')) return 'bot 自己的状态不往通用层搬';
+  if (memory.expiresAt !== undefined && memory.expiresAt <= now) return '这条已经过期';
+  if ((memory.status ?? 'active') !== 'active') return '只提升已确认的记忆，候选池里的先留在原处';
+  return undefined;
+}
+
+/**
+ * 生成提升后的记录：复制到 owner 层，换 id 避免覆盖原记录。
+ * `why` 由模型给出，写进 personaSummary 之外的普通字段里没有位置，
+ * 所以拼进内容尾部——让下一次读到它的人知道它为什么在这里。
+ */
+export function buildPromotion(memory: Memory, why: string, now: number): Memory {
+  const note = why.trim().slice(0, 120);
+  return {
+    ...memory,
+    id: `${memory.id}@owner`,
+    scope: 'owner',
+    revision: memory.revision + 1,
+    updatedAt: now,
+    // 保留原 scope 信息：将来要追「这条是从哪来的」还有据可查。
+    sourceEventId: memory.sourceEventId ?? `promoted-from:${memory.scope ?? 'owner'}`,
+    content: note === '' ? memory.content : `${memory.content}（${note}）`.slice(0, 300),
+  };
 }

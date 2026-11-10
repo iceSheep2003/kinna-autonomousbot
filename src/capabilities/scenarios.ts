@@ -17,7 +17,7 @@ export const SCENARIO_TOOLS = {
    * 也要能真的开口（发消息、发评论）——因为主动做什么由它决定。
    */
   self: [
-    'memory.search', 'experience.read', 'self.note',
+    'memory.search', 'memory.promote', 'experience.read', 'self.note',
     'self.todo_add', 'self.todo_list', 'self.todo_close',
     'web.search', 'web.fetch',
     'bilibili.discover', 'bilibili.search', 'bilibili.video', 'bilibili.comments', 'bilibili.quotas',

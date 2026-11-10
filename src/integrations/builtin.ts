@@ -16,6 +16,22 @@ export function registerMemory(registry: CapabilityRegistrar, memory: MemoryView
       return found;
     },
   });
+  // 提升到通用层：判据写在工具描述里，判断由模型自己做——系统里没有人坐在那儿点同意。
+  const promote = z.object({ id: z.string().min(1).max(64), why: z.string().min(1).max(200) });
+  registry.register({
+    name: 'memory.promote',
+    description: '把一条只在某个场合成立的记忆，提到「所有场合都适用」那一层。'
+      + '判断标准：他的**稳定偏好或看法**（「希望回答更有人味」「认为地点比名气重要」）该提；'
+      + '**一次性的安排**（「计划国庆休息 13 天」）留在原处；**这个群里发生的事**留在原处；'
+      + '**边界和禁忌**几乎总该提。宁可少提不可错搬——把 A 群的事搬成通用记忆，等于在 B 群说出来。'
+      + 'why 写清你为什么认为它通用，会跟着这条记忆一起留下。',
+    effect: 'write', input: promote,
+    async run(raw) {
+      if (!memory.promote) throw new Error('当前没有写权限，无法提升记忆');
+      const args = promote.parse(raw);
+      return memory.promote(args.id, args.why, clock());
+    },
+  });
   const read = z.object({ after: z.number().int().min(0), limit: z.number().int().min(1).max(20).default(10) });
   registry.register({ name: 'experience.read', description: '翻回当时记下的原话，确认自己没记错、没把推测当成事实', effect: 'read', input: read,
     async run(raw) { const args = read.parse(raw); return experience.read(args.after, args.limit); },

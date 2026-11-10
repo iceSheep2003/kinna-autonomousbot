@@ -36,6 +36,8 @@ export interface MemoryView {
   related?(request: RecallRequest): MemoryContext;
   /** 提炼写入去重/加固/替代；没有写权限的调用方拿不到这个方法。 */
   observe?(proposal: MemoryProposal, now: number): MemoryWriteOutcome;
+  /** 把一条只在某个场合成立的记忆提到通用层；判断由模型做，这里只执行与结构拦截。 */
+  promote?(id: string, why: string, now: number): { ok: boolean; reason?: string };
 }
 export interface ExperienceView {
   read(after: number, limit: number, source?: string): Experience[];

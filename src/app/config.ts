@@ -48,7 +48,7 @@ export const ConfigSchema = z.object({
   /** 唯一一份人格定义，self / scene 等场合共用；不是每个 session 一套人设。 */
   personality: PersonalitySchema.default(defaultPersonality),
   boundaries: z.object({
-    allowedTools: z.array(z.string()).default(['memory.search', 'experience.read', 'self.note', 'group.say']),
+    allowedTools: z.array(z.string()).default(['memory.search', 'memory.promote', 'experience.read', 'self.note', 'group.say']),
     maxModelCallsPerHour: z.number().int().min(1).default(60),
     maxExecutionSteps: z.number().int().min(1).default(12),
     maxPendingJobs: z.number().int().min(8).default(100),

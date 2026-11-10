@@ -18,6 +18,8 @@ import { parseScope, formatScope } from './scope.js';
 import { rankMemories, type RankingWeights } from './ranking.js';
 import { DEFAULT_MEMORY_BUDGET_CHARS, renderMemoryContext } from './render.js';
 import { contradiction, decideDedupe } from './dedupe.js';
+import { buildPromotion, refusePromotion } from './promote.js';
+import type { ExperienceLog } from './ports.js';
 
 export interface MemoryServiceOptions {
   clock?: () => number;
@@ -32,9 +34,12 @@ export interface MemoryServiceOptions {
 export class MemoryService implements MemoryView {
   private readonly repository: MemoryRepository;
   private readonly options: MemoryServiceOptions;
-  constructor(repository: MemoryRepository, options: MemoryServiceOptions = {}) {
+  /** 可选：提升要与其他自主动作记在同一条流水里，便于事后追。 */
+  private readonly experience?: ExperienceLog;
+  constructor(repository: MemoryRepository, options: MemoryServiceOptions = {}, experience?: ExperienceLog) {
     this.repository = repository;
     this.options = options;
+    this.experience = experience;
   }
   private now(): number { return this.options.clock?.() ?? Date.now(); }
   private request(query: string, limit: number, scope?: string): RecallRequest {
@@ -92,6 +97,21 @@ export class MemoryService implements MemoryView {
   /** 加固交给仓储；老仓库没有这个接口就什么都不写，避免「读一次改一次版本」。 */
   private reinforce(hits: readonly RetrievalHit[], now: number): void {
     this.repository.reinforce?.(hits.map(hit => hit.memory.id), now);
+  }
+
+  /**
+   * 提升到通用层。没有人工审核：判断由模型做（它读得到上下文），
+   * 这里只拦结构上说不通的，然后复制一份到 owner——不动原记录。
+   */
+  promote(id: string, why: string, now: number): { ok: boolean; reason?: string } {
+    const memory = this.repository.get(id);
+    const refusal = refusePromotion(memory, now);
+    if (refusal !== undefined || !memory) return { ok: false, reason: refusal ?? '没有这条记忆' };
+    // 已经提过就不要再提：否则每次整合都复制一份 owner 副本，越堆越多。
+    if (this.repository.get(`${id}@owner`)) return { ok: false, reason: '这条已经提升过了' };
+    this.repository.publish(buildPromotion(memory, why, now));
+    this.experience?.record('self', 'memory.promoted', { id, from: memory.scope, why }, now);
+    return { ok: true };
   }
 
   /** 提炼写入：模型给的是 proposal，是否被接受由这里的持久化策略说了算。 */

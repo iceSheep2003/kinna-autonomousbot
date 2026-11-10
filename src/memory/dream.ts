@@ -4,6 +4,7 @@ import type { ContextLimits } from '../shared/limits.js';
 import type { DreamFeedback, ExperienceLog, MemoryRepository } from './ports.js';
 import { DreamRoundSchema, type DreamLoop, type DreamRound, type DreamVersion, type Memory, type Opportunity } from './types.js';
 import { lived } from './lived.js';
+import { buildPromotion, refusePromotion } from './promote.js';
 import { screenOpportunities } from './opportunity.js';
 import { checkMemory, guardScope, judge, loopOf, snapshotOf, type Workbook } from './replay-rules.js';
 import { DREAM_INSTRUCTIONS, DREAM_REPLAY_NOTES } from './dream-prompts.js';
@@ -59,6 +60,8 @@ interface DreamResult {
   notify: boolean; summary: string; proposals: string[]; failedApproaches: string[];
   /** 已通过「够不够格」校验的机会，随完成通知一起投递给 self。 */
   opportunities: Opportunity[];
+  /** 模型判断该提到通用层的记忆。 */
+  promotions: DreamPromotion[];
 }
 
 /**
@@ -97,13 +100,14 @@ export class DreamService {
     if (!experiences.length) {
       return () => this.commit({
         id, cursor, cutoff, revisions, ops: [], rounds: 0, converged: true, now, notify: false,
-        summary: '这段时间没有值得记下的事', proposals: [], failedApproaches: [], opportunities: [],
+        summary: '这段时间没有值得记下的事', proposals: [], failedApproaches: [], opportunities: [], promotions: [],
       });
     }
     const loop = await this.replay({ cursor, cutoff, experiences, prior, error, revisions });
     return () => this.commit({
       id, cursor, cutoff, revisions, ops: loop.ops, rounds: loop.rounds, converged: loop.converged, now,
       notify: true, summary: loop.summary, proposals: loop.proposals, failedApproaches: loop.failedApproaches,
+      promotions: loop.promotions,
       opportunities: loop.opportunities,
     });
   }
@@ -118,7 +122,7 @@ export class DreamService {
     const allowed = new Set([...experiences.map(e => e.seq), ...prior.flatMap(m => m.evidence)]);
     const book = new Map<string, Workbook>(prior.map(m => [m.id, { ...m, evidence: [...m.evidence], status: 'active', origin: 'prior' }]));
     const session: ReplaySession = { ...input, allowed, book, seen: new Set(), retracted: new Set() };
-    const outcome: ReplayOutcome = { rounds: 0, converged: false, summary: '', proposals: [], failedApproaches: [], opportunities: [], ops: [] };
+    const outcome: ReplayOutcome = { rounds: 0, converged: false, summary: '', proposals: [], failedApproaches: [], opportunities: [], ops: [], promotions: [] };
     for (let round = 1; round <= this.policy.maxRounds; round++) {
       outcome.rounds = round;
       const raw = await this.roundOf(session, round);
@@ -163,14 +167,15 @@ export class DreamService {
     return true;
   }
 
-  /** 收下这一遍给出的建议与机会：后一遍的说法覆盖前一遍，机会按 id 合并。 */
+  /** 收下这一遍给出的建议与机会：后一遍的说法覆盖前一遍，机会与提升按 id 合并。 */
   private collect(raw: DreamRound, outcome: ReplayOutcome): void {
     if (raw.proposals?.length) outcome.proposals = [...raw.proposals];
     if (raw.failedApproaches?.length) outcome.failedApproaches = [...raw.failedApproaches];
-    if (!raw.opportunities?.length) return;
-    const merged = new Map(outcome.opportunities.map(item => [item.id, item]));
-    for (const item of raw.opportunities) merged.set(item.id, item);
-    outcome.opportunities = [...merged.values()];
+    if (raw.promotions?.length) {
+      // 多遍取并集：同一 id 以后一遍的理由为准（它看到了更多上下文）。
+      outcome.promotions = mergeById(outcome.promotions, raw.promotions.map(item => ({ id: item.id, why: item.why })));
+    }
+    if (raw.opportunities?.length) outcome.opportunities = mergeById(outcome.opportunities, raw.opportunities);
   }
 
   /** 本遍新写的记忆放进工作副本；第 2 遍起不允许换个名字重写已有的记忆。 */
@@ -253,6 +258,26 @@ export class DreamService {
     return screened.accepted;
   }
 
+  /**
+   * 执行模型判断的提升：复制到 owner 层，不动原记录。
+   *
+   * 没有人工审核这一环，所以这里只拦**结构上说不通**的（过期、非 active、已经在通用层、
+   * bot 自有状态）。判断"这条该不该通用"由模型负责——它是唯一读到上下文的角色。
+   * 抬不上去就记一条经验，不抛错：一条记忆提不上去不该让整次整合失败。
+   */
+  private promote(promotions: readonly DreamPromotion[], now: number): void {
+    for (const item of promotions) {
+      const memory = this.repository.get(item.id);
+      const refusal = refusePromotion(memory, now);
+      if (refusal !== undefined || !memory) {
+        this.experience.record('dream', 'dream.promotion.refused', { id: item.id, reason: refusal ?? '没有这条' }, now);
+        continue;
+      }
+      this.repository.publish(buildPromotion(memory, item.why, now));
+      this.experience.record('dream', 'dream.promotion.applied', { id: item.id, from: memory.scope, why: item.why }, now);
+    }
+  }
+
   private commit(result: DreamResult): void {
     const { id, cursor, cutoff, revisions, ops, now } = result;
     if (this.repository.cursor() !== cursor) throw new Error('Dream cursor conflict');
@@ -261,6 +286,7 @@ export class DreamService {
       // 撤回/合并在库里只留一个最小痕迹：不删历史（source 链要保持可回溯），标记状态。
       else this.retire(op.id, 'superseded', revisions);
     }
+    this.promote(result.promotions, now);
     const version: DreamVersion = {
       id, cursor, cutoff, status: 'published', at: now, rounds: result.rounds, converged: result.converged,
       candidate: {
@@ -316,7 +342,18 @@ type ReplaySession = {
 type ReplayOutcome = {
   rounds: number; converged: boolean; summary: string;
   proposals: string[]; failedApproaches: string[]; opportunities: Opportunity[]; ops: DreamOp[];
+  /** 模型判断「这条不该只在这个场合成立」；由 commit 复制到 owner 层。 */
+  promotions: DreamPromotion[];
 };
+
+type DreamPromotion = { id: string; why: string };
+
+/** 按 id 合并两批：后来的覆盖前面的，顺序按首次出现。 */
+function mergeById<T extends { id: string }>(prior: readonly T[], next: readonly T[]): T[] {
+  const merged = new Map(prior.map(item => [item.id, item]));
+  for (const item of next) merged.set(item.id, item);
+  return [...merged.values()];
+}
 
 type DreamRoundRevision = NonNullable<DreamRound['revisions']>[number];
 
