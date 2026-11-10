@@ -6,6 +6,7 @@ import type { ExecutionView } from '../execution/ports.js';
 import type { CapabilityAccess } from '../capabilities/ports.js';
 import type { Schedule } from '../runtime/types.js';
 import type { SelfInbox, SelfSessionRepository } from './ports.js';
+import { socialLine } from './social.js';
 import type { SelfTodo } from './todos.js';
 
 export interface ContextDependencies {
@@ -24,6 +25,10 @@ export interface ContextDependencies {
   toolNames?: string[];
   /** 心境的一句话描述；由场景侧维护，self 只读。 */
   moodNarration?: () => string;
+  /** 我认识的人：最近见过的几位，渲染成一段人话。不传就不提。 */
+  people?: () => string;
+  /** 社交圈：能跟谁说话、现在合不合适主动开口。 */
+  social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[]; proactivePermitted: boolean };
 }
 
 /** self 每轮只看到有界快照；会话永久存在不等于上下文无限增长。 */
@@ -40,18 +45,31 @@ export class SelfContextBuilder {
   private readonly todos?: () => SelfTodo[];
   private readonly toolNames?: string[];
   private readonly moodNarration?: () => string;
+  private readonly people?: () => string;
+  private readonly social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[]; proactivePermitted: boolean };
   constructor(deps: ContextDependencies) {
     this.subject = deps.subject; this.memory = deps.memory; this.executions = deps.executions;
     this.schedules = deps.schedules; this.inbox = deps.inbox; this.session = deps.session;
     this.capabilities = deps.capabilities; this.boundaries = deps.boundaries; this.limits = deps.limits;
     this.todos = deps.todos; this.toolNames = deps.toolNames; this.moodNarration = deps.moodNarration;
+    this.people = deps.people; this.social = deps.social;
   }
+  /** 认识的人 + 能找谁 + 我这会儿的心情。没有就都不出现，不留空字段占位。 */
+  private softContext(): Record<string, string> {
+    const blocks: Record<string, string> = {};
+    const mood = this.moodNarration?.() ?? '';
+    const people = this.people?.() ?? '';
+    if (mood !== '') blocks['mood'] = mood;
+    if (people !== '') blocks['people'] = people;
+    if (this.social !== undefined) blocks['social'] = socialLine(this.social());
+    return blocks;
+  }
+
   build(trigger: unknown, previousAttemptError: string | undefined, now: number) {
     const cursor = this.session.cursor();
     const observations = this.inbox.read(cursor, this.limits.observations);
     const query = JSON.stringify(observations).slice(0, payloadBudget.recallQueryChars);
     const indexText = this.memory.indexText?.() ?? '';
-    const moodText = this.moodNarration?.() ?? '';
     // 前缀缓存：subject 只放**不变**的东西（人格、方向）。
     // affect 每轮会被场景改，混进来会让后面所有稳定内容一起失效——实测命中率只有 37%。
     const self_state = this.subject.read(); void self_state.revision; void self_state.focus;
@@ -59,8 +77,9 @@ export class SelfContextBuilder {
       subject: { id: self_state.id, identity: self_state.identity, direction: self_state.direction, tendencies: self_state.tendencies },
       capabilities: this.capabilities.catalog(this.toolNames ?? this.boundaries.allowedTools), boundaries: this.boundaries,
       goals: this.subject.goals(query, this.limits.goals),
-      // 心境：一句话，不是数字。self 只读——它没看过那一轮对话，不该写这个。
-      ...(moodText === '' ? {} : { mood: moodText }),
+      // 心境、认识的人、社交圈：一句话级别，不是数字也不是 id 列表。
+      ...this.softContext(),
+
       // 索引优先：先给一份目录（我记得什么），细节留给 memory.expand。
       ...(indexText === '' ? {} : { memoryIndex: indexText }),
       memories: this.memory.recall(query, this.limits.memories),

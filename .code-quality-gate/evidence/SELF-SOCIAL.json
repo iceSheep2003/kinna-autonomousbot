@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "SELF-SOCIAL",
+  "attempts": 2,
+  "red": {
+    "time": "2026-11-10T14:19:53.617Z",
+    "snapshot": {
+      "contract": "046a4fb636642ae8b6edf44d55abd1958c5bb14236ff8b95dc5b902f2bb70f5a",
+      "protected": {
+        ".code-quality-gate/tasks/SELF-SOCIAL.json": "d0c5a7e6a74f2337bb0b6c0a9584ca06bd9d7130b8eb63318c20754443339c4d",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/self-social.test.ts": "ba1cd6beaa8c63e011fe3d9c0ab6cffc8fafe89098703d41cc4bc63d34540f85"
+      },
+      "code": {
+        "src/app/agent.ts": "e0f98e558a037a0ff832a2f0dbccfd1eb5d1c8e40dac0a11be1467a551d99586",
+        "src/app/wire-self.ts": "a850e86bf9b63d9cbe4f269995598476f62a9348cdc38d5962755c5a81e8dfb2",
+        "src/self/context.ts": "5a0d89f617ca68f1eb0f6d437c1e21340ed3b30da58b88b8710336d73a56c532",
+        "src/self/social.ts": "7737db516aa7caec416b0bf3105e1c53c5c20ac88a85258760eebad262c2ced8"
+      }
+    },
+    "report": ".quality/code-quality-gate/SELF-SOCIAL/red-09dc0bf9-f79e-47c0-9624-830d6a8bcc7b.md"
+  },
+  "green": {
+    "time": "2026-11-10T14:26:31.341Z",
+    "snapshot": {
+      "contract": "046a4fb636642ae8b6edf44d55abd1958c5bb14236ff8b95dc5b902f2bb70f5a",
+      "protected": {
+        ".code-quality-gate/tasks/SELF-SOCIAL.json": "d0c5a7e6a74f2337bb0b6c0a9584ca06bd9d7130b8eb63318c20754443339c4d",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/self-social.test.ts": "ba1cd6beaa8c63e011fe3d9c0ab6cffc8fafe89098703d41cc4bc63d34540f85"
+      },
+      "code": {
+        "src/app/agent.ts": "f6f0243149ce651023df942a0bb8c5718c44c54dacf77bd7fe6d833c55ac4f12",
+        "src/app/wire-self.ts": "7ba7194b564c6c4ce0e5c5d95b9133cc6d596282685c916c7f89427ab5e943ce",
+        "src/self/context.ts": "ad5e8ecfc2b627b6a1e90993aa9be7df2a69f66be59324cc01832ad4bec50e8d",
+        "src/self/social.ts": "7737db516aa7caec416b0bf3105e1c53c5c20ac88a85258760eebad262c2ced8"
+      }
+    },
+    "report": ".quality/code-quality-gate/SELF-SOCIAL/green-38a8391b-aeb1-4321-a62a-d07343a741c0.md"
+  }
+}

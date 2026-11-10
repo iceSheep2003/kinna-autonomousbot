@@ -300,6 +300,33 @@ cqg gate               # 最终门禁，含 TDD 证据
 
 task manifest 在 `.code-quality-gate/tasks/<ID>.json`，要列全 `testFiles` 和 `codeFiles`。
 
+### self 的主动性
+
+**它能主动开口，但不会无缘无故开口。**
+
+self 的上下文里现在有社交圈：
+
+```
+能说话的群：群330707267、群795853；能私聊的人：3485823460；这会儿可以主动开口。
+```
+
+心情差时同一句会变成：
+
+```
+这会儿不太想说话，先别主动找人——等心情回来再说。
+```
+
+这条判断来自 `mood.permitsProactive()`（`sociability` 低于阈值时为 false），
+**不在 self 里算**——数字一律不进提示词。
+
+三处改动：
+1. `people` —— 最近见过的几个人（谁、什么关系、上次聊到哪）
+2. `social` —— 有哪些群、能私聊谁、现在合不合适
+3. `qq.environment` 放开给 self —— 不再靠猜群号
+
+**不给 self 直接改人物画像的权限**：印象应该是互动积累出来的，让它自己写会编人设。
+要记人就走 `memory.observe`（带 `subjectUserId`），情绪事件走的就是这条路。
+
 ### 聊天时什么会唤醒 self
 
 **只有一种：scene 明确要求反思（`reflect`）。** 普通聊天不唤醒 self。

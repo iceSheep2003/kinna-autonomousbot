@@ -25,6 +25,15 @@ export function reportDream(report: DreamReport, gate: DreamGate, inbox: InboxTy
   inbox.notify('dream.completed', { dreamId: report.id, summary: report.summary, proposals: report.proposals, opportunities: report.opportunities.length }, report.now);
 }
 
+/** 社交圈 + 心情：能不能主动开口由心情决定，不由装配层传。 */
+export function socialOf(
+  source: (() => { groups: { id: string; name?: string }[]; privateAllowed: string[] }) | undefined,
+  mood: MoodSystem,
+): () => { groups: { id: string; name?: string }[]; privateAllowed: string[]; proactivePermitted: boolean } {
+  const base = source?.() ?? { groups: [], privateAllowed: [] };
+  return () => ({ ...base, proactivePermitted: mood.permitsProactive() });
+}
+
 /**
  * 装配 self 会话：上下文、提交器、唯一人格。
  *
@@ -35,7 +44,10 @@ export function wireSelf(input: {
   repositories: Repositories; model: LanguageModel; memory: MemoryService; experience: ExperienceService;
   subject: SubjectService; executions: ExecutionService; scheduler: Scheduler; inbox: Inbox;
   capabilities: CapabilityRegistry; boundaries: Boundaries; limits: ContextLimits;
-  personality?: Personality; mood: MoodSystem; reflections: ReflectionService; todos?: () => import('../self/todos.js').SelfTodo[];
+  personality?: Personality; mood: MoodSystem; reflections: ReflectionService;
+  todos?: () => import('../self/todos.js').SelfTodo[];
+  people?: () => string;
+  social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[]; proactivePermitted: boolean };
 }): SelfSession {
   return new SelfSession({
     model: input.model, repository: input.repositories.selfSession, inbox: input.inbox, personality: input.personality,
@@ -44,9 +56,23 @@ export function wireSelf(input: {
       capabilities: input.capabilities, boundaries: input.boundaries, limits: input.limits,
       // 心情由场景写、self 只读：它没见过那一轮对话，不该自己编。
       moodNarration: () => input.mood.narration(),
+      ...(input.people ? { people: input.people } : {}),
+      ...(input.social ? { social: input.social } : {}),
       ...(input.todos ? { todos: input.todos } : {}),
       toolNames: allowFor('self', input.boundaries.allowedTools) }),
     committer: new DecisionCommitter({ subject: input.subject, executions: input.executions, scheduler: input.scheduler,
       reflections: input.reflections, jobs: input.repositories.jobs, capacity: input.boundaries.maxPendingJobs }),
   });
+}
+
+/** self 的额外注入：待办、认识的人、社交圈。都不改变主干，只是多给点上下文。 */
+export function selfExtras(
+  options: { todos?: () => import('../self/todos.js').SelfTodo[]; people?: { roster?(limit: number): string }; social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[] } },
+  mood: MoodSystem,
+) {
+  return {
+    ...(options.todos ? { todos: options.todos } : {}),
+    ...(options.people?.roster !== undefined ? { people: () => options.people?.roster?.(5) ?? '' } : {}),
+    social: socialOf(options.social, mood),
+  };
 }

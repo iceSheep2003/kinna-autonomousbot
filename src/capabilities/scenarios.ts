@@ -24,6 +24,8 @@ export const SCENARIO_TOOLS = {
     'bilibili.todo', 'bilibili.todo_claim', 'bilibili.todo_done', 'bilibili.todo_skip',
     'bilibili.draft_comment', 'bilibili.draft_dynamic', 'bilibili.delete_post',
     'qq.send_message', 'qq.get_message', 'qq.history', 'qq.group_members', 'qq.group_info',
+    // 环境查询：不知道有哪些群/表情，主动开口就只能靠猜。
+    'qq.environment',
   ],
   /** 办事：真正能用哪些由任务自己声明（execution.tools），这里只放行长期可用的只读入口。 */
   execution: ['memory.search', 'experience.read'],

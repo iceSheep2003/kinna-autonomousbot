@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "SELF-SOCIAL",
+  "title": "self 知道能跟谁说话、现在合不合适主动开口",
+  "requirements": [
+    "社交圈只接受有界结构：群、可私聊的人、现在合不合适",
+    "渲染成人话，不是一串 id",
+    "心情不允许时明确说不合适，而不是让模型自己猜",
+    "self 上下文带上注入的社交圈；没注入时不崩"
+  ],
+  "testFiles": ["test/self-social.test.ts"],
+  "codeFiles": ["src/self/social.ts", "src/self/context.ts", "src/app/agent.ts", "src/app/wire-self.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

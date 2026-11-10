@@ -9,7 +9,7 @@ import { SubjectService } from '../subject/service.js';
 import { MoodSystem } from '../subject/mood-system.js';
 import { defaultAffectConfig } from '../subject/mood-system.js';
 import { createSceneAffect } from './scene-affect.js';
-import { reportDream, wireSelf } from './wire-self.js';
+import { reportDream, selfExtras, wireSelf } from './wire-self.js';
 import { GoalService } from '../subject/goals.js';
 import { AffectService } from '../subject/affect.js';
 import { ExperienceService } from '../memory/experience.js';
@@ -42,6 +42,8 @@ export interface AgentOptions {
   todos?: () => import('../self/todos.js').SelfTodo[]; // 自己想做的事，注入 self 上下文
   /** 人物视图：观察消息里的人 + 渲染认识的几位。 */
   people?: import('../execution/scene.js').PeopleView;
+  /** 能主动联系的对象。合不合适开口由心情决定，不在这里传。 */
+  social?: () => { groups: { id: string; name?: string }[]; privateAllowed: string[] };
   /** 情绪配置覆盖；不传用默认（启用、半衰期 180 分钟）。 */
   affect?: Partial<import('../subject/mood-system.js').AffectConfig>;
   /** 人物仓储（写画像用）；不提供就不写画像。 */
@@ -150,7 +152,7 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     },
   });
   const self = wireSelf({ repositories: r, model, memory, experience, subject, executions, scheduler, inbox,
-    capabilities, boundaries, limits, personality, mood, reflections, ...(options.todos ? { todos: options.todos } : {}) });
+    capabilities, boundaries, limits, personality, mood, reflections, ...selfExtras(options, mood) });
   const runner = new ExecutionRunner({ repository: r.execution, service: executions, model, capabilities, memory, experience, boundaries, limits });
   const dream = wireDream({
     repositories: r, experience, model, limits, opportunities: options.dreamOpportunities,

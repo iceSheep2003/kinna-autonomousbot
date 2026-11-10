@@ -98,7 +98,10 @@ const agent = composeAgent(repositories, model, capabilities, { ...config,
   // 醒来能看到自己想做的几件事（只读 open 的，最多 5 条）。
   todos: () => openTodos(selfTodos.list(TODO_CAP), 5),
   people,
-  peopleStore });
+  peopleStore,
+  // 社交圈：self 得知道能跟谁说话，否则主动开口只能靠猜群号。
+  // proactivePermitted 由 agent 内部按心情填，这里只给「有哪些对象」。
+  ...(config.qq ? { social: () => socialCircleOf(config.qq!) } : {}) });
 const runtime = agent.runtime;
 registerMemory(capabilities, agent.memory, agent.experience);
 registerNotes(capabilities, agent.experience);
@@ -187,3 +190,13 @@ async function shutdown() {
 }
 process.on('SIGINT', () => { void shutdown(); });
 process.on('SIGTERM', () => { void shutdown(); });
+
+/** 能主动联系的对象：白名单群 + 白名单私聊人。群名要另查，这里只给 id。 */
+function socialCircleOf(qq: { allowedGroups: string[]; privateEnabled: boolean; allowedPrivateUsers: string[] }): {
+  groups: { id: string }[]; privateAllowed: string[];
+} {
+  return {
+    groups: qq.allowedGroups.map(id => ({ id })),
+    privateAllowed: qq.privateEnabled ? qq.allowedPrivateUsers : [],
+  };
+}
