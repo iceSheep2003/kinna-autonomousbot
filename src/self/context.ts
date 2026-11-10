@@ -20,6 +20,8 @@ export interface ContextDependencies {
   limits: ContextLimits;
   /** 自己记下的待办；不配置时不注入。 */
   todos?: () => SelfTodo[];
+  /** 本场景固化的工具清单；不传则退回部署白名单（装配层负责按场景算）。 */
+  toolNames?: string[];
 }
 
 /** self 每轮只看到有界快照；会话永久存在不等于上下文无限增长。 */
@@ -34,11 +36,12 @@ export class SelfContextBuilder {
   private readonly boundaries: Boundaries;
   private readonly limits: ContextLimits;
   private readonly todos?: () => SelfTodo[];
+  private readonly toolNames?: string[];
   constructor(deps: ContextDependencies) {
     this.subject = deps.subject; this.memory = deps.memory; this.executions = deps.executions;
     this.schedules = deps.schedules; this.inbox = deps.inbox; this.session = deps.session;
     this.capabilities = deps.capabilities; this.boundaries = deps.boundaries; this.limits = deps.limits;
-    this.todos = deps.todos;
+    this.todos = deps.todos; this.toolNames = deps.toolNames;
   }
   build(trigger: unknown, previousAttemptError: string | undefined, now: number) {
     const cursor = this.session.cursor();
@@ -49,7 +52,8 @@ export class SelfContextBuilder {
       observations, recent: this.session.recentDecisions(this.limits.recentTurns),
       // 自己想做的事：只给开着的、最新的几条，避免清单一长就变成负担。
       ...(this.todos ? { todos: this.todos().slice(0, 5) } : {}),
-      capabilities: this.capabilities.catalog(this.boundaries.allowedTools), boundaries: this.boundaries,
+      // 工具清单由装配层按场景算好传进来；self 不认识「场景」这个概念。
+      capabilities: this.capabilities.catalog(this.toolNames ?? this.boundaries.allowedTools), boundaries: this.boundaries,
       schedules: this.schedules.pending(this.limits.schedules), executions: this.executions.ongoing(this.limits.executions) };
   }
 }

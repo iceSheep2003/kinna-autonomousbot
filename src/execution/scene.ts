@@ -82,6 +82,7 @@ export class SceneSessions {
     if (!observations.length) return () => {};
     // 本地额度耗尽先停下来，不把普通执行问题自动升级成主体反思。
     if (state.steps >= this.boundaries.maxExecutionSteps) return this.budgetCommit(state, source, now);
+    // 场景固化：这个环境只给这个环境的工具（qq 场景只给 qq.*），再与部署白名单取交集。
     const allowed = this.boundaries.allowedTools.filter(name => name.startsWith(`${state.environment}.`));
     const frame = { id, stepId, state, source, allowed, now };
     const step = await this.loadStep({ ...frame, observations });

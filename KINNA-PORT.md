@@ -24,11 +24,30 @@
 | `infrastructure/storage` | `src/infrastructure/sqlite/` | 已存在 |
 | `bootstrap/app.py` | `src/main.ts` + `src/app/agent.ts` | 装配 |
 
-## 三条要继承的设计原则
+## 设计原则（本版本已取舍）
 
-1. **封闭内核**：模型能调的工具是固定集合，不允许外部目录或运行时协议新增。新能力写成 owner 启用的 Skill。
-2. **manifest allowlist**：features 目录里放一个模块不会自动加载；没有 manifest 行就是一具死代码，loader 在注册时拒绝未声明的贡献。
-3. **模型即过滤器**：不写"热度公式""关键词打分""定时播报"。搜到东西交给模型判断，它不写就不发。
+1. **继承：封闭内核**。模型能调的工具是固定集合，不允许外部目录或运行时协议新增。
+2. **继承：模型即过滤器**。不写"热度公式""关键词打分""定时播报"。搜到东西交给模型判断，它不写就不发。
+3. **不继承：Skill 机制**。线上用「内核 12 工具 + `skill_load` 动态加载指令」来扩展行为，
+   代价是多一层间接：工具先被 skill 声明、再被加载、再被引用，排查要追三层。
+   **本版本按场景直接固化工具清单**（`src/capabilities/scenarios.ts`）：
+   群聊只给 `qq.*`、看视频只给 `bilibili.*`、自己待着给跨平台的读写组合。
+   要加能力就往清单加一行，不再需要声明-加载-引用三段式。
+4. **不继承：manifest allowlist**。它解决的问题是「目录里丢个模块就自动生效」，
+   但本版本的工具都要显式注册进 `CapabilityRegistry`，本身就不会被目录扫描进来，
+   再加一层 manifest 是重复防护。
+
+### 场景工具怎么固化
+
+| 场景 | 工具来源 |
+| --- | --- |
+| self（自己待着） | `SCENARIO_TOOLS.self` 显式清单：记忆、note、todo、各平台读接口、以及"真的开口"的发送工具 |
+| scene:qq（群里说话） | `allowedTools` 里以 `qq.` 开头的 |
+| scene:bilibili（视频下接话） | `allowedTools` 里以 `bilibili.` 开头的 |
+| execution（办事） | 任务自己在 `intent.tools` 里声明的 |
+
+清单与部署白名单**取交集**：清单写「这个场景可以有什么」，`allowedTools` 写「这台机器允许什么」，
+两者都满足才会出现在模型面前；没装的能力自动消失，不报错。
 
 ## 分期
 

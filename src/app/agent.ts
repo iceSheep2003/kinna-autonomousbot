@@ -3,6 +3,7 @@ import { defaultPersonality, type Personality } from '../shared/persona.js';
 import { defaultContextLimits, type Boundaries, type ContextLimits } from '../shared/limits.js';
 import type { Repositories } from './repositories.js';
 import type { CapabilityRegistry } from '../capabilities/registry.js';
+import { allowFor } from '../capabilities/scenarios.js';
 import { SubjectService } from '../subject/service.js';
 import { GoalService } from '../subject/goals.js';
 import { AffectService } from '../subject/affect.js';
@@ -133,7 +134,7 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
   const self = new SelfSession({
     model, repository: r.selfSession, inbox, personality,
     context: new SelfContextBuilder({ subject, memory, executions, schedules: scheduler, inbox, session: r.selfSession, capabilities, boundaries, limits,
-      ...(options.todos ? { todos: options.todos } : {}) }),
+      ...(options.todos ? { todos: options.todos } : {}), toolNames: allowFor('self', boundaries.allowedTools) }),
     committer: new DecisionCommitter({ subject, executions, scheduler, reflections, jobs: r.jobs, capacity: boundaries.maxPendingJobs }),
   });
   const runner = new ExecutionRunner({ repository: r.execution, service: executions, model, capabilities, memory, experience, boundaries, limits });
@@ -157,7 +158,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     runtime: { start: (now?: number) => worker.start(now), tick: (now?: number) => worker.tick(now), stop: () => worker.stop(), ingest: (event: IncomingEvent, now?: number) => inbox.ingest(event, now) },
     // 暴露查询接口给 HTTP/内置工具；不把跨模块仓库交给插件。
     subject: subject as import('../subject/ports.js').SubjectView, memory, experience,
-    capabilities: () => capabilities.catalog(boundaries.allowedTools),
+    // 对外暴露的是「自己待着」这个场景的工具，不是全量注册表。
+    capabilities: () => capabilities.catalog(allowFor('self', boundaries.allowedTools)),
   };
 }
 export type Agent = ReturnType<typeof composeAgent>;
