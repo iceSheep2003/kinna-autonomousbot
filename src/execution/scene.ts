@@ -34,6 +34,15 @@ reflect 只通知长期 self，不直接修改主体目标、身份或情绪。�
 发送以真实工具回执为准。输出 JSON。`;
 }
 
+/**
+ * 场景的索引作用域：qq 场景按群（group:xxx），其它按功能（feature:环境）。
+ * 与记忆 scope 用同一套写法，索引和记忆才对得上。
+ */
+export function scopeOf(state: { environment: string; scope: Record<string, string>; id: string }): string {
+  const kind = state.environment === 'qq' ? 'group' : 'feature';
+  return `${kind}:${state.scope.id ?? state.id}`;
+}
+
 export interface SceneDependencies {
   repository: SceneSessionRepository;
   experience: ExperienceLog;
@@ -150,8 +159,11 @@ export class SceneSessions {
     const query = JSON.stringify(frame.observations).slice(0, 3000);
     // 超出窗口的旧对话已经压成现场状态：带上它，才接得上「刚才聊到哪」。
     const prior = renderSceneState(frame.state.sceneState);
+    // 索引：owner 那份 + 这个场景那份。细节仍然留给 memory.expand。
+    const indexText = this.memory?.indexText?.(scopeOf(frame.state)) ?? '';
     return { now: frame.now, session: frame.state, subject: { identity: subject.identity, direction: subject.direction, affect: subject.affect },
       ...(prior === '' ? {} : { earlier: prior }),
+      ...(indexText === '' ? {} : { memoryIndex: indexText }),
       // 场景记忆：owner 层（所有场合适用）+ 这个群/这个环境的。scope 由环境与 id 决定。
       ...(this.memory ? { memories: this.memory.context?.({
         query, limit: this.limits.memories, now: frame.now,

@@ -40,16 +40,18 @@ export function promoteMemories(deps: EffectDeps, promotions: readonly DreamProm
 }
 
 /**
- * 落库索引：全量替换，但先裁到合法大小、并丢掉指向空处的条目。
+ * 落库索引：每个作用域全量替换，先裁到合法大小、并丢掉指向空处的条目。
  *
- * 不传 index 表示「这次不动」——不是清空。想清空要显式给空数组。
+ * 没给的 scope 表示「这份不动」——不是清空。想清空要显式给空 entries。
  */
-export function writeMemoryIndex(deps: EffectDeps, entries: readonly IndexEntry[] | undefined, now: number): void {
-  if (entries === undefined || !deps.repository.publishIndex) return;
-  const prior = deps.repository.index?.();
-  const fitted = fitIndex(entries, prior?.version ?? 0, now);
-  const { index, dropped } = pruneDangling(fitted, id => deps.repository.get(id) !== undefined);
-  deps.repository.publishIndex({ ...index, version: index.version + 1 });
-  if (dropped > 0) deps.experience.record('dream', 'memory.index.pruned', { dropped }, now);
-  deps.experience.record('dream', 'memory.index.written', { entries: index.entries.length }, now);
+export function writeMemoryIndexes(deps: EffectDeps, indexes: readonly { scope: string; entries: readonly IndexEntry[] }[] | undefined, now: number): void {
+  if (indexes === undefined || !deps.repository.publishIndex) return;
+  for (const { scope, entries } of indexes) {
+    const prior = deps.repository.index?.(scope);
+    const fitted = fitIndex(entries, prior?.version ?? 0, now, scope);
+    const { index, dropped } = pruneDangling(fitted, id => deps.repository.get(id) !== undefined);
+    deps.repository.publishIndex({ ...index, version: index.version + 1 });
+    if (dropped > 0) deps.experience.record('dream', 'memory.index.pruned', { scope, dropped }, now);
+    deps.experience.record('dream', 'memory.index.written', { scope, entries: index.entries.length }, now);
+  }
 }

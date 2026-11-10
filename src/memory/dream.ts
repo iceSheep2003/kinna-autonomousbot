@@ -4,7 +4,7 @@ import type { ContextLimits } from '../shared/limits.js';
 import type { DreamFeedback, ExperienceLog, MemoryRepository } from './ports.js';
 import { DreamRoundSchema, type DreamLoop, type DreamRound, type DreamVersion, type Memory, type Opportunity } from './types.js';
 import { lived } from './lived.js';
-import { promoteMemories, writeMemoryIndex, type DreamPromotion } from './dream-effects.js';
+import { promoteMemories, writeMemoryIndexes, type DreamPromotion } from './dream-effects.js';
 import type { IndexEntry } from './index-layer.js';
 import { screenOpportunities } from './opportunity.js';
 import { checkMemory, guardScope, judge, loopOf, snapshotOf, type Workbook } from './replay-rules.js';
@@ -63,8 +63,8 @@ interface DreamResult {
   opportunities: Opportunity[];
   /** 模型判断该提到通用层的记忆。 */
   promotions: DreamPromotion[];
-  /** 模型给出的记忆索引；undefined 表示这次不动索引。 */
-  index?: IndexEntry[];
+  /** 模型给出的记忆索引（按作用域）；undefined 表示这次不动索引。 */
+  indexes?: { scope: string; entries: IndexEntry[] }[];
 }
 
 /**
@@ -110,7 +110,7 @@ export class DreamService {
     return () => this.commit({
       id, cursor, cutoff, revisions, ops: loop.ops, rounds: loop.rounds, converged: loop.converged, now,
       notify: true, summary: loop.summary, proposals: loop.proposals, failedApproaches: loop.failedApproaches,
-      promotions: loop.promotions, ...(loop.index ? { index: loop.index } : {}),
+      promotions: loop.promotions, ...(loop.indexes ? { indexes: loop.indexes } : {}),
       opportunities: loop.opportunities,
     });
   }
@@ -175,7 +175,7 @@ export class DreamService {
     if (raw.proposals?.length) outcome.proposals = [...raw.proposals];
     if (raw.failedApproaches?.length) outcome.failedApproaches = [...raw.failedApproaches];
     // 索引是「最后一遍为准」：后面的回放看到的内容更全，前面那版自然被取代。
-    if (raw.index !== undefined) outcome.index = raw.index;
+    if (raw.indexes !== undefined) outcome.indexes = raw.indexes;
     if (raw.promotions?.length) {
       // 多遍取并集：同一 id 以后一遍的理由为准（它看到了更多上下文）。
       outcome.promotions = mergeById(outcome.promotions, raw.promotions.map(item => ({ id: item.id, why: item.why })));
@@ -274,7 +274,7 @@ export class DreamService {
     // 副作用交给独立模块：回放决定「记什么」，这里决定「怎么组织」，后者失败不影响前者。
     const effects = { repository: this.repository, experience: this.experience };
     promoteMemories(effects, result.promotions, now);
-    writeMemoryIndex(effects, result.index, now);
+    writeMemoryIndexes(effects, result.indexes, now);
     const version: DreamVersion = {
       id, cursor, cutoff, status: 'published', at: now, rounds: result.rounds, converged: result.converged,
       candidate: {
@@ -332,8 +332,8 @@ type ReplayOutcome = {
   proposals: string[]; failedApproaches: string[]; opportunities: Opportunity[]; ops: DreamOp[];
   /** 模型判断「这条不该只在这个场合成立」；由 commit 复制到 owner 层。 */
   promotions: DreamPromotion[];
-  /** 模型给出的记忆索引；最后一遍为准（它看到的内容最全）。 */
-  index?: IndexEntry[];
+  /** 模型给出的记忆索引（按作用域）；最后一遍为准（它看到的内容最全）。 */
+  indexes?: { scope: string; entries: IndexEntry[] }[];
 };
 
 /** 按 id 合并两批：后来的覆盖前面的，顺序按首次出现。 */

@@ -22,8 +22,8 @@ export interface MemoryRepository {
   candidates?(request: RecallRequest): Memory[];
   /** 可选：被注入过的记录记一次访问，供排序的 access 信号使用。 */
   reinforce?(ids: string[], now: number): void;
-  /** 可选：记忆索引（对齐 Claude 的 MEMORY.md）。老实现不提供则不启用索引层。 */
-  index?(): MemoryIndex | undefined;
+  /** 可选：某个作用域的索引；不传 scope 取 owner。老实现不提供则不启用索引层。 */
+  index?(scope?: string): MemoryIndex | undefined;
   publishIndex?(index: MemoryIndex): void;
 }
 export interface ReflectionRepository { save(reflection: Reflection): void; get(id: string): Reflection | undefined }
@@ -43,9 +43,9 @@ export interface MemoryView {
   /** 把一条只在某个场合成立的记忆提到通用层；判断由模型做，这里只执行与结构拦截。 */
   promote?(id: string, why: string, now: number): { ok: boolean; reason?: string };
   /** 记忆索引（Claude 式 MEMORY.md）：注入时先看它，细节再按需展开。 */
-  index?(): MemoryIndex | undefined;
-  /** 渲染好的索引文本；上下文直接用它，不必知道索引长什么样。 */
-  indexText?(): string;
+  index?(scope?: string): MemoryIndex | undefined;
+  /** 渲染好的索引文本（owner + 指定场景）；上下文直接用它。 */
+  indexText?(scope?: string): string;
   /** 按 id 取全文，供 memory.expand 展开索引条目。 */
   expand?(ids: readonly string[]): Memory[];
 }

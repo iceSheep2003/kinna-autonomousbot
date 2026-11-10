@@ -39,6 +39,8 @@ export const IndexEntrySchema = z.object({
 export type IndexEntry = z.infer<typeof IndexEntrySchema>;
 
 export const MemoryIndexSchema = z.object({
+  /** 这份索引属于哪个作用域：owner / group:xxx / feature:xxx。 */
+  scope: z.string().min(1).max(120).default('owner'),
   /** 索引更新时递增；用来判断是不是新版本。 */
   version: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
@@ -46,9 +48,14 @@ export const MemoryIndexSchema = z.object({
 });
 export type MemoryIndex = z.infer<typeof MemoryIndexSchema>;
 
-export const EMPTY_INDEX: MemoryIndex = { version: 0, updatedAt: 0, entries: [] };
+export const EMPTY_INDEX: MemoryIndex = { scope: 'owner', version: 0, updatedAt: 0, entries: [] };
 
 const HEADER = '## 我记得的事（先看这里，细节用 memory.expand 展开）';
+
+/** 场景索引换个标题：让模型知道这些只在这个场合成立。 */
+function headerFor(scope: string): string {
+  return scope === 'owner' ? HEADER : `## 在这处我记得的事（只在这个场合成立，细节用 memory.expand 展开）`;
+}
 
 /** 一条索引渲染成一行：主题 + 摘要 + 可展开的 id。 */
 function lineOf(entry: IndexEntry): string {
@@ -68,8 +75,9 @@ export function renderIndex(index: MemoryIndex, maxChars: number = INDEX_LIMITS.
   if (index.entries.length === 0) return { text: '', dropped: 0 };
   const sorted = [...index.entries].sort((a, b) => b.weight - a.weight);
   const kept: string[] = [];
+  const header = headerFor(index.scope);
   // 标题也算预算：不然 4000 的上限会实际变成 4000 + 标题长度。
-  let used = HEADER.length + 1;
+  let used = header.length + 1;
   let dropped = 0;
   for (const entry of sorted) {
     const line = lineOf(entry);
@@ -78,7 +86,7 @@ export function renderIndex(index: MemoryIndex, maxChars: number = INDEX_LIMITS.
   }
   if (kept.length === 0) return { text: '', dropped };
   // 渲染顺序按主题排，便于扫读；权重只用来决定丢谁。
-  return { text: [HEADER, ...kept.sort()].join('\n'), dropped };
+  return { text: [header, ...kept.sort()].join('\n'), dropped };
 }
 
 /**
@@ -88,9 +96,9 @@ export function renderIndex(index: MemoryIndex, maxChars: number = INDEX_LIMITS.
  * 只按 weight 丢掉尾部，并且**保留模型没说错的部分**——它写的每一条都算数，
  * 少的只是没挤进预算的那些。
  */
-export function fitIndex(entries: readonly IndexEntry[], version: number, now: number): MemoryIndex {
+export function fitIndex(entries: readonly IndexEntry[], version: number, now: number, scope = 'owner'): MemoryIndex {
   const sorted = [...entries].sort((a, b) => b.weight - a.weight).slice(0, INDEX_LIMITS.maxEntries);
-  return { version, updatedAt: now, entries: sorted.map(entry => ({
+  return { scope, version, updatedAt: now, entries: sorted.map(entry => ({
     ...entry,
     summary: entry.summary.slice(0, INDEX_LIMITS.maxSummary),
     memoryIds: entry.memoryIds.slice(0, 20),

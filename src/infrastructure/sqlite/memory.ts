@@ -2,7 +2,7 @@ import type { DreamState, DreamStateRepository, ExperienceRepository, MemoryRepo
 import type { DreamVersion, Memory, RecallRequest, Reflection } from '../../memory/types.js';
 import type { Store } from './database.js';
 import { searchTerms, matchSql } from './search.js';
-import { readIndex, writeIndex } from './memory-index.js';
+import { readIndex, readIndexes, writeIndex } from './memory-index.js';
 
 /** 生命周期默认值：旧记忆（Dream 旧版只有五个字段）与新写入的修订共用一张表。 */
 function lifecycleDefaults(stamp: number): Pick<Memory,
@@ -55,8 +55,10 @@ export class SqliteMemoryRepository implements MemoryRepository {
     this.db.put('memories', memory.id, withDefaults(memory));
   }
   cursor() { return this.db.get<number>('meta', 'dreamCursor') ?? 0; }
-  /** 记忆索引：只有一份，和记忆内容分开存。 */
-  index() { return readIndex(this.db); }
+  /** 记忆索引：每个作用域一份。 */
+  index(scope = 'owner') { return readIndex(this.db, scope); }
+  /** 所有索引，供装配层批量取用。 */
+  indexes() { return readIndexes(this.db); }
   publishIndex(index: import('../../memory/index-layer.js').MemoryIndex) { writeIndex(this.db, index); }
   count() { return Number(this.db.db.prepare("SELECT COUNT(*) AS n FROM documents WHERE collection='memories'").get()!.n); }
   publishDream(version: DreamVersion) {

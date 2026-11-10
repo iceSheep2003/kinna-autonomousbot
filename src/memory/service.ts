@@ -132,12 +132,23 @@ export class MemoryService implements MemoryView {
   }
 
   /** 索引读一层：仓储没实现就没有索引，注入时自然省略。 */
-  index() { return this.repository.index?.(); }
+  index(scope?: string) { return this.repository.index?.(scope); }
 
-  /** 渲染好的索引文本，给上下文直接用。 */
-  indexText(): string {
-    const index = this.repository.index?.();
-    return index ? renderIndex(index).text : '';
+  /**
+   * 渲染好的索引文本：owner 那份常驻，再附上当前场景那份。
+   *
+   * 为什么分开给两份而不是合并：owner 的事换个场合也成立，场景的事只在这里成立。
+   * 合并成一份，模型就分不清哪条能搬到别处说。
+   */
+  indexText(scope?: string): string {
+    const parts: string[] = [];
+    const owner = this.repository.index?.('owner');
+    if (owner) parts.push(renderIndex(owner).text);
+    if (scope !== undefined && scope !== 'owner') {
+      const local = this.repository.index?.(scope);
+      if (local) parts.push(renderIndex(local).text);
+    }
+    return parts.filter(text => text !== '').join('\n\n');
   }
 
   /** 按 id 展开：只返回真的存在的，顺序按传入顺序，方便模型对照索引。 */

@@ -109,18 +109,24 @@ export const DreamRoundSchema = z.object({
    */
   promotions: z.array(z.object({ id, why: text.max(200) })).max(10).optional(),
   /**
-   * 记忆索引（对齐 Claude 的 MEMORY.md）：**全量替换**，不是增量。
+   * 记忆索引（对齐 Claude 的 MEMORY.md）：**按作用域各一份，全量替换**。
+   *
+   * 一次给多份而不是每个场景单独调一次：模型这一轮本来就看到了全部记忆，
+   * 让它顺手分好组最省；分开调只会把同一批内容重复读几遍。
    *
    * 为什么要全量：索引的价值就在于它是一份「当前全景」。增量修改几次之后，
    * 索引会变成历史补丁的拼接，谁也不清楚里面还有效的有多少。
-   * 为什么不省略：不传表示「这次不动索引」，不是「清空」。
+   * 为什么不给就是不动：省略表示「这次不动索引」，不是「清空」。
    */
-  index: z.array(z.object({
-    topic: text.max(40),
-    summary: text.max(60),
-    memoryIds: z.array(id).min(1).max(20),
-    weight: z.number().min(0).max(5).default(3),
-  })).max(40).optional(),
+  indexes: z.array(z.object({
+    scope: z.string().min(1).max(120),
+    entries: z.array(z.object({
+      topic: text.max(40),
+      summary: text.max(60),
+      memoryIds: z.array(id).min(1).max(20),
+      weight: z.number().min(0).max(5).default(3),
+    })).max(40),
+  })).max(10).optional(),
   /** 翻出来的机会：想做但还没做的事。只给 self 当素材，不会直接变成任何动作。 */
   opportunities: z.array(OpportunitySchema).max(OPPORTUNITY_MAX_ITEMS).optional(),
   failedApproaches: z.array(text).max(20).optional(),

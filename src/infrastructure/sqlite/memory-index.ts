@@ -1,13 +1,18 @@
 import type { MemoryIndex } from '../../memory/index-layer.js';
 import type { Store } from './database.js';
 
-/** 索引只有一份，存在 meta 集合里；不需要按 id 查。 */
+/** 每个 scope 一份索引，存在同一个集合里，按 scope 当 id。 */
 export const INDEX_COLLECTION = 'memory.index';
 
-export function readIndex(db: Store): MemoryIndex | undefined {
-  return db.get<MemoryIndex>(INDEX_COLLECTION, 'current');
+export function readIndex(db: Store, scope: string): MemoryIndex | undefined {
+  return db.get<MemoryIndex>(INDEX_COLLECTION, scope);
+}
+
+/** 读出所有已生成的索引，供上下文按需取用。 */
+export function readIndexes(db: Store): MemoryIndex[] {
+  return db.list<MemoryIndex>(INDEX_COLLECTION, 50);
 }
 
 export function writeIndex(db: Store, index: MemoryIndex): void {
-  db.put(INDEX_COLLECTION, 'current', index);
+  db.put(INDEX_COLLECTION, index.scope, index);
 }
