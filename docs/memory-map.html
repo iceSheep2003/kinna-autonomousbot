@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记忆机制总图</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #6b6b6b; --line: #d8d4cc; --bg: #faf8f4;
+    --owner: #2f6f4f; --scoped: #8a5a2b; --dream: #2c4a7c; --read: #6b3f7a;
+    --card: #ffffff; --soft: #f2efe9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 32px 80px; background: var(--bg); color: var(--ink);
+    font: 15px/1.7 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Helvetica Neue", sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 40px; font-size: 14px; }
+  h2 { font-size: 17px; margin: 56px 0 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  h2 .n { color: var(--muted); font-weight: 400; margin-right: 8px; }
+  .lead { color: var(--muted); font-size: 14px; margin: 8px 0 22px; }
+  svg { display: block; width: 100%; height: auto; }
+  code { background: var(--soft); padding: 1px 5px; border-radius: 3px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 14px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 8px; font-size: 14px; }
+  .card p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.65; }
+  .card .file { margin-top: 10px; font-size: 12px; font-family: ui-monospace, monospace; color: var(--dream); }
+  .note { background: #fdf6e8; border-left: 3px solid #c99a3f; padding: 12px 16px; font-size: 13.5px; margin: 18px 0; border-radius: 0 4px 4px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+  td:first-child { white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>记忆机制总图</h1>
+  <p class="sub">一条记忆从发生到被想起来，中间经过哪些环节 · 对应 <code>src/memory/</code> 下的文件</p>
+
+  <!-- ============ 1. 全景 ============ -->
+  <h2><span class="n">01</span>全景：一条记忆的一生</h2>
+  <p class="lead">三个动词：<b>写</b>（发生的事怎么进库）、<b>整理</b>（夜里 Dream 怎么重构）、<b>读</b>（下次醒来怎么被想起来）。</p>
+
+  <svg viewBox="0 0 1000 300" role="img" aria-label="记忆生命周期">
+    <defs>
+      <marker id="a1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 z" fill="#9a948a"/>
+      </marker>
+    </defs>
+
+    <!-- 写 -->
+    <rect x="20" y="40" width="150" height="84" rx="8" fill="#fff" stroke="#d8d4cc"/>
+    <text x="95" y="70" text-anchor="middle" font-size="13" fill="#1a1a1a">发生了什么</text>
+    <text x="95" y="90" text-anchor="middle" font-size="11.5" fill="#6b6b6b">群消息 / 视频 / 网页</text>
+    <text x="95" y="108" text-anchor="middle" font-size="11.5" fill="#6b6b6b">写进经验流水</text>
+
+    <line x1="170" y1="82" x2="208" y2="82" stroke="#9a948a" stroke-width="1.4" marker-end="url(#a1)"/>
+
+    <rect x="210" y="40" width="150" height="84" rx="8" fill="#fff" stroke="#d8d4cc"/>
+    <text x="285" y="70" text-anchor="middle" font-size="13" fill="#1a1a1a">提炼成记忆</text>
+    <text x="285" y="90" text-anchor="middle" font-size="11.5" fill="#6b6b6b">去重 · 矛盾检测</text>
+    <text x="285" y="108" text-anchor="middle" font-size="11.5" fill="#6b6b6b">定 scope · 留证据</text>
+
+    <line x1="360" y1="82" x2="398" y2="82" stroke="#9a948a" stroke-width="1.4" marker-end="url(#a1)"/>
+
+    <!-- 库 -->
+    <rect x="400" y="30" width="190" height="108" rx="8" fill="#f2efe9" stroke="#c9c2b6"/>
+    <text x="495" y="56" text-anchor="middle" font-size="13" fill="#1a1a1a">记忆库</text>
+    <text x="495" y="78" text-anchor="middle" font-size="11.5" fill="#6b6b6b">owner（通用）</text>
+    <text x="495" y="96" text-anchor="middle" font-size="11.5" fill="#6b6b6b">group:xxx（场景）</text>
+    <text x="495" y="114" text-anchor="middle" font-size="11.5" fill="#6b6b6b">+ 索引 + 证据链</text>
+
+    <!-- Dream -->
+    <line x1="495" y1="138" x2="495" y2="176" stroke="#2c4a7c" stroke-width="1.6" marker-end="url(#a1)"/>
+    <text x="508" y="162" font-size="11" fill="#2c4a7c">夜里</text>
+
+    <rect x="360" y="178" width="270" height="92" rx="8" fill="#eef2f8" stroke="#2c4a7c"/>
+    <text x="495" y="202" text-anchor="middle" font-size="13" fill="#2c4a7c" font-weight="600">Dream 整理</text>
+    <text x="495" y="222" text-anchor="middle" font-size="11.5" fill="#4a5f80">提升 · 压缩 · 重建索引 · 归档</text>
+    <text x="495" y="242" text-anchor="middle" font-size="11.5" fill="#4a5f80">回放多遍，自我修正</text>
+    <text x="495" y="260" text-anchor="middle" font-size="11" fill="#7a8ba6">（四项详见第 03 节）</text>
+
+    <line x1="495" y1="270" x2="495" y2="286" stroke="#2c4a7c" stroke-width="1.6" marker-end="url(#a1)"/>
+
+    <!-- 读 -->
+    <line x1="630" y1="84" x2="668" y2="84" stroke="#9a948a" stroke-width="1.4" marker-end="url(#a1)"/>
+
+    <rect x="670" y="30" width="150" height="108" rx="8" fill="#fff" stroke="#6b3f7a"/>
+    <text x="745" y="56" text-anchor="middle" font-size="13" fill="#6b3f7a" font-weight="600">下次醒来</text>
+    <text x="745" y="78" text-anchor="middle" font-size="11.5" fill="#6b6b6b">先给索引</text>
+    <text x="745" y="96" text-anchor="middle" font-size="11.5" fill="#6b6b6b">再按需展开</text>
+    <text x="745" y="114" text-anchor="middle" font-size="11.5" fill="#6b6b6b">（第 04 节）</text>
+
+    <rect x="850" y="30" width="130" height="108" rx="8" fill="#fff" stroke="#d8d4cc"/>
+    <text x="915" y="62" text-anchor="middle" font-size="12.5" fill="#1a1a1a">用得上</text>
+    <text x="915" y="82" text-anchor="middle" font-size="11.5" fill="#6b6b6b">进上下文</text>
+    <text x="915" y="104" text-anchor="middle" font-size="11.5" fill="#6b6b6b">没用上</text>
+    <text x="915" y="120" text-anchor="middle" font-size="11.5" fill="#6b6b6b">沉下去</text>
+
+    <line x1="820" y1="84" x2="848" y2="84" stroke="#9a948a" stroke-width="1.4" marker-end="url(#a1)"/>
+    <!-- 回到写 -->
+    <path d="M 915 138 L 915 150 L 95 150 L 95 126" fill="none" stroke="#c9c2b6" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#a1)"/>
+    <text x="700" y="144" text-anchor="middle" font-size="10" fill="#9a948a">被想起来 / 被遗忘</text>
+  </svg>
+
+  <!-- ============ 2. 分层 ============ -->
+  <h2><span class="n">02</span>分层：一条记忆属于哪个场合</h2>
+  <p class="lead">核心规则只有一句：<b>向下看得到，向上看不到</b>。在 A 群能读「通用」+「A 群」，读不到 B 群。</p>
+
+  <svg viewBox="0 0 1000 260" role="img" aria-label="作用域分层"><defs>
+      <marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 z" fill="#9a948a"/>
+      </marker>
+    </defs>
+
+    <!-- owner -->
+    <rect x="40" y="30" width="920" height="60" rx="6" fill="#eef6f1" stroke="#2f6f4f"/>
+    <text x="60" y="56" font-size="13.5" fill="#2f6f4f" font-weight="600">owner　通用层</text>
+    <text x="60" y="76" font-size="11.5" fill="#4f7d63">他的稳定偏好、身份、长期目标 —— 换哪个场合都成立</text>
+    <text x="930" y="66" text-anchor="end" font-size="11" fill="#6b9b7f">所有场景都能读</text>
+
+    <!-- 场景 -->
+    <rect x="40" y="110" width="280" height="60" rx="6" fill="#faf2e8" stroke="#8a5a2b"/>
+    <text x="60" y="134" font-size="13" fill="#8a5a2b" font-weight="600">group:330707267</text>
+    <text x="60" y="154" font-size="11.5" fill="#a07b52">408 备考 / 择校 / 模拟卷</text>
+
+    <rect x="340" y="110" width="280" height="60" rx="6" fill="#faf2e8" stroke="#8a5a2b"/>
+    <text x="360" y="134" font-size="13" fill="#8a5a2b" font-weight="600">group:866795853</text>
+    <text x="360" y="154" font-size="11.5" fill="#a07b52">Bot 排障 / SSH / 硬件</text>
+
+    <rect x="640" y="110" width="320" height="60" rx="6" fill="#faf2e8" stroke="#8a5a2b"/>
+    <text x="660" y="134" font-size="13" fill="#8a5a2b" font-weight="600">feature:bilibili</text>
+    <text x="660" y="154" font-size="11.5" fill="#a07b52">这个功能里的事</text>
+
+    <!-- 视线示意 -->
+    <path d="M 180 110 L 180 92" stroke="#2f6f4f" stroke-width="1.3" marker-end="url(#a2)"/>
+    <path d="M 480 110 L 480 92" stroke="#2f6f4f" stroke-width="1.3" marker-end="url(#a2)"/>
+    <path d="M 800 110 L 800 92" stroke="#2f6f4f" stroke-width="1.3" marker-end="url(#a2)"/>
+
+    <!-- 禁止 -->
+    <path d="M 180 172 L 480 172" stroke="#b04a3a" stroke-width="1.2" stroke-dasharray="5 4"/>
+    <text x="330" y="192" text-anchor="middle" font-size="11" fill="#b04a3a">✕ 读不到</text>
+    <path d="M 480 206 L 180 206" stroke="#b04a3a" stroke-width="1.2" stroke-dasharray="5 4"/>
+    <text x="330" y="226" text-anchor="middle" font-size="11" fill="#b04a3a">✕ 也不串</text>
+
+    <text x="640" y="196" font-size="11.5" fill="#6b6b6b">提升：从场景 → owner，由模型自己判断</text>
+    <text x="640" y="216" font-size="11.5" fill="#6b6b6b">（复制一份，原记录保留，判断错了能退回）</text>
+  </svg>
+
+  <div class="note">
+    <b>为什么不是「全隔离」。</b>线上原版是跨群绝不可见，代价是同一个人换个群就变陌生人，
+    「他喜欢别人叫全名」这种跟群无关的事每个群都要重学一遍。
+    分层要解决的就是这个。
+  </div>
+
+  <!-- ============ 3. Dream 四项 ============ -->
+  <h2><span class="n">03</span>整理：Dream 夜里的四件事</h2>
+  <p class="lead">这是整套机制里唯一会「重构」记忆的地方，也是它最难讲清楚的部分。四项各管一件事，互不重叠。</p>
+
+  <svg viewBox="0 0 1000 420" role="img" aria-label="Dream 的四项工作"><defs>
+      <marker id="a3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 z" fill="#9a948a"/>
+      </marker>
+    </defs>
+
+    <!-- 中心 -->
+    <rect x="390" y="20" width="220" height="52" rx="8" fill="#2c4a7c"/>
+    <text x="500" y="42" text-anchor="middle" font-size="13.5" fill="#fff" font-weight="600">Dream 回放 N 遍</text>
+    <text x="500" y="60" text-anchor="middle" font-size="11" fill="#b9c9e0">每遍看到上一遍的结果，自我修正</text>
+
+    <line x1="500" y1="72" x2="500" y2="92" stroke="#2c4a7c" stroke-width="1.5"/>
+    <line x1="120" y1="92" x2="880" y2="92" stroke="#2c4a7c" stroke-width="1.5"/>
+    <line x1="120" y1="92" x2="120" y2="112" stroke="#2c4a7c" stroke-width="1.5" marker-end="url(#a3)"/>
+    <line x1="380" y1="92" x2="380" y2="112" stroke="#2c4a7c" stroke-width="1.5" marker-end="url(#a3)"/>
+    <line x1="620" y1="92" x2="620" y2="112" stroke="#2c4a7c" stroke-width="1.5" marker-end="url(#a3)"/>
+    <line x1="880" y1="92" x2="880" y2="112" stroke="#2c4a7c" stroke-width="1.5" marker-end="url(#a3)"/>
+
+    <!-- 1 提升 -->
+    <rect x="30" y="114" width="180" height="150" rx="7" fill="#fff" stroke="#2f6f4f"/>
+    <text x="120" y="138" text-anchor="middle" font-size="13" fill="#2f6f4f" font-weight="600">① 提升</text>
+    <text x="120" y="160" text-anchor="middle" font-size="11" fill="#6b6b6b">场景 → 通用</text>
+    <text x="120" y="184" text-anchor="middle" font-size="10.5" fill="#6b6b6b">「他喜欢人味」跨场合成立</text>
+    <text x="120" y="202" text-anchor="middle" font-size="10.5" fill="#6b6b6b">「国庆休 13 天」不成立</text>
+    <text x="120" y="228" text-anchor="middle" font-size="10.5" fill="#2f6f4f">复制，不移动</text>
+    <text x="120" y="248" text-anchor="middle" font-size="10.5" fill="#2f6f4f">原记录保留可退回</text>
+
+    <!-- 2 压缩 -->
+    <rect x="290" y="114" width="180" height="150" rx="7" fill="#fff" stroke="#6b3f7a"/>
+    <text x="380" y="138" text-anchor="middle" font-size="13" fill="#6b3f7a" font-weight="600">② 压缩</text>
+    <text x="380" y="160" text-anchor="middle" font-size="11" fill="#6b6b6b">同一件事记了多遍</text>
+    <text x="380" y="184" text-anchor="middle" font-size="10.5" fill="#6b6b6b">模型找组 + 合成一句</text>
+    <text x="380" y="202" text-anchor="middle" font-size="10.5" fill="#6b6b6b">代码取证据并集</text>
+    <text x="380" y="228" text-anchor="middle" font-size="10.5" fill="#6b3f7a">原记录标 superseded</text>
+    <text x="380" y="248" text-anchor="middle" font-size="10.5" fill="#6b3f7a">证据一条不丢</text>
+
+    <!-- 3 索引 -->
+    <rect x="530" y="114" width="180" height="150" rx="7" fill="#fff" stroke="#2c4a7c"/>
+    <text x="620" y="138" text-anchor="middle" font-size="13" fill="#2c4a7c" font-weight="600">③ 重建索引</text>
+    <text x="620" y="160" text-anchor="middle" font-size="11" fill="#6b6b6b">每场景一份目录</text>
+    <text x="620" y="184" text-anchor="middle" font-size="10.5" fill="#6b6b6b">主题 + 一句话 + id</text>
+    <text x="620" y="202" text-anchor="middle" font-size="10.5" fill="#6b6b6b">≤40 条 / ≤4000 字符</text>
+    <text x="620" y="228" text-anchor="middle" font-size="10.5" fill="#2c4a7c">全量替换，不是增量</text>
+    <text x="620" y="248" text-anchor="middle" font-size="10.5" fill="#2c4a7c">指向空处的条目丢掉</text>
+
+    <!-- 4 归档 -->
+    <rect x="790" y="114" width="180" height="150" rx="7" fill="#fff" stroke="#8a5a2b"/>
+    <text x="880" y="138" text-anchor="middle" font-size="13" fill="#8a5a2b" font-weight="600">④ 归档</text>
+    <text x="880" y="160" text-anchor="middle" font-size="11" fill="#6b6b6b">冷掉的旧记忆</text>
+    <text x="880" y="184" text-anchor="middle" font-size="10.5" fill="#6b6b6b">60 天没用 + 不重要</text>
+    <text x="880" y="202" text-anchor="middle" font-size="10.5" fill="#6b6b6b">通用层不收</text>
+    <text x="880" y="228" text-anchor="middle" font-size="10.5" fill="#8a5a2b">不是删除，只是沉下去</text>
+    <text x="880" y="248" text-anchor="middle" font-size="10.5" fill="#8a5a2b">想起来就恢复</text>
+
+    <!-- 底部：共同的分工原则 -->
+    <rect x="30" y="296" width="940" height="98" rx="7" fill="#fdf6e8" stroke="#c99a3f"/>
+    <text x="50" y="322" font-size="13" fill="#8a6a1f" font-weight="600">四项共同的分工原则：模型负责判断，代码负责语义</text>
+    <text x="50" y="346" font-size="12" fill="#8a6a1f">模型说「这该通用 / 这俩是一件事 / 这么归类」；代码管「证据取并集、重要度取最大、原记录怎么标记、上限多少」。</text>
+    <text x="50" y="368" font-size="12" fill="#8a6a1f">反过来就会出事：让模型管证据，它某次会悄悄丢一条，没人看得出来；让它自己算上限，它每次都超一点。</text>
+    <text x="50" y="388" font-size="11.5" fill="#a88a4a">所以每一项都有「结构拦截」：明显说不通的直接拒，比如已经提升过的、指向不存在的记忆、过期或非 active 的。</text>
+  </svg>
+
+  <!-- ============ 4. 读取链路 ============ -->
+  <h2><span class="n">04</span>读取：一次注入里发生了什么</h2>
+  <p class="lead">从「我要回忆」到「模型看到的那段文本」，中间有四次过滤。</p>
+
+  <svg viewBox="0 0 1000 210" role="img" aria-label="读取链路"><defs>
+      <marker id="a4" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 z" fill="#9a948a"/>
+      </marker>
+    </defs>
+
+    <rect x="20" y="40" width="120" height="66" rx="6" fill="#fff" stroke="#d8d4cc"/>
+    <text x="80" y="68" text-anchor="middle" font-size="12.5">查询</text>
+    <text x="80" y="88" text-anchor="middle" font-size="10.5" fill="#6b6b6b">观察 / 关键词</text>
+
+    <line x1="140" y1="73" x2="168" y2="73" stroke="#9a948a" stroke-width="1.3" marker-end="url(#a4)"/>
+
+    <rect x="170" y="30" width="150" height="86" rx="6" fill="#fff" stroke="#b04a3a"/>
+    <text x="245" y="54" text-anchor="middle" font-size="12" fill="#b04a3a" font-weight="600">① 作用域过滤</text>
+    <text x="245" y="74" text-anchor="middle" font-size="10.5" fill="#6b6b6b">只看 owner + 当前场景</text>
+    <text x="245" y="92" text-anchor="middle" font-size="10.5" fill="#6b6b6b">别的场景直接看不到</text>
+    <text x="245" y="108" text-anchor="middle" font-size="10" fill="#b04a3a">在检索前，不在提示词里</text>
+
+    <line x1="320" y1="73" x2="348" y2="73" stroke="#9a948a" stroke-width="1.3" marker-end="url(#a4)"/>
+
+    <rect x="350" y="30" width="150" height="86" rx="6" fill="#fff" stroke="#6b3f7a"/>
+    <text x="425" y="54" text-anchor="middle" font-size="12" fill="#6b3f7a" font-weight="600">② 状态过滤</text>
+    <text x="425" y="74" text-anchor="middle" font-size="10.5" fill="#6b6b6b">active / 未过期</text>
+    <text x="425" y="92" text-anchor="middle" font-size="10.5" fill="#6b6b6b">可见性、事实主体</text>
+    <text x="425" y="108" text-anchor="middle" font-size="10" fill="#6b3f7a">归档的默认不进来</text>
+
+    <line x1="500" y1="73" x2="528" y2="73" stroke="#9a948a" stroke-width="1.3" marker-end="url(#a4)"/>
+
+    <rect x="530" y="30" width="150" height="86" rx="6" fill="#fff" stroke="#2f6f4f"/>
+    <text x="605" y="54" text-anchor="middle" font-size="12" fill="#2f6f4f" font-weight="600">③ 分池排序</text>
+    <text x="605" y="74" text-anchor="middle" font-size="10.5" fill="#6b6b6b">通用 40% / 场景 60%</text>
+    <text x="605" y="92" text-anchor="middle" font-size="10.5" fill="#6b6b6b">IDF 加权 + 新鲜度</text>
+    <text x="605" y="108" text-anchor="middle" font-size="10" fill="#2f6f4f">两层都留位置</text>
+
+    <line x1="680" y1="73" x2="708" y2="73" stroke="#9a948a" stroke-width="1.3" marker-end="url(#a4)"/>
+
+    <rect x="710" y="30" width="130" height="86" rx="6" fill="#fff" stroke="#2c4a7c"/>
+    <text x="775" y="54" text-anchor="middle" font-size="12" fill="#2c4a7c" font-weight="600">④ 预算渲染</text>
+    <text x="775" y="74" text-anchor="middle" font-size="10.5" fill="#6b6b6b">超长整条跳过</text>
+    <text x="775" y="92" text-anchor="middle" font-size="10.5" fill="#6b6b6b">不截半句</text>
+    <text x="775" y="108" text-anchor="middle" font-size="10" fill="#2c4a7c">分 general / scoped</text>
+
+    <line x1="840" y1="73" x2="868" y2="73" stroke="#9a948a" stroke-width="1.3" marker-end="url(#a4)"/>
+
+    <rect x="870" y="40" width="110" height="66" rx="6" fill="#f2efe9" stroke="#c9c2b6"/>
+    <text x="925" y="68" text-anchor="middle" font-size="12.5">模型看到</text>
+    <text x="925" y="88" text-anchor="middle" font-size="10.5" fill="#6b6b6b">索引 + 若干条</text>
+
+    <!-- 底部说明 -->
+    <text x="20" y="150" font-size="12" fill="#6b6b6b">注入里还有第三块：<tspan font-weight="600" fill="#1a1a1a">索引</tspan>——每场景一份目录（主题 + 一句话 + 可展开的 id）。</text>
+    <text x="20" y="172" font-size="12" fill="#6b6b6b">索引解决「预算截断砍掉重要条目」：被砍的条目仍在索引里留着一行，模型知道它存在，可以按需展开。</text>
+    <text x="20" y="194" font-size="12" fill="#6b6b6b">展开用 <tspan font-family="monospace" fill="#2c4a7c">memory.expand</tspan>；主动回想用 <tspan font-family="monospace" fill="#2c4a7c">memory.search</tspan>，它连归档的一起翻，命中就恢复。</text>
+  </svg>
+
+  <!-- ============ 5. 特例 ============ -->
+  <h2><span class="n">05</span>两个容易被忽略的特例</h2>
+
+  <div class="grid">
+    <div class="card">
+      <h3>对话也要压缩</h3>
+      <p>场景每次只读最近 20 条经验，更早的直接丢弃。群聊里这会断掉三样东西：还在继续的话题、没接住的话、之前开的玩笑。</p>
+      <p style="margin-top:8px">所以把窗口外的旧对话压成「现场状态」——话题线、没接住的事、可接的梗、我说过什么。<b>产物是可接着说下去的现场，不是摘要。</b></p>
+      <div class="file">execution/scene-compaction.ts</div>
+    </div>
+    <div class="card">
+      <h3>遗忘必须可逆</h3>
+      <p>归档不是删除：内容和证据都留着，只是不进默认上下文。</p>
+      <p style="margin-top:8px">主动回想（<code>memory.search</code>）会连归档的一起翻，命中就恢复成 active。归档判断本来就可能出错——重要度标低了、那条恰好不常被问。一次归档等于永久丢失是不可接受的。</p>
+      <div class="file">memory/forget.ts</div>
+    </div>
+  </div>
+
+  <!-- ============ 6. 文件地图 ============ -->
+  <h2><span class="n">06</span>文件地图</h2>
+  <table>
+    <thead><tr><th>文件</th><th>干什么</th><th>关键约束</th></tr></thead>
+    <tbody>
+      <tr><td><code>types.ts</code></td><td>记忆与 Dream 的数据形状</td><td>字段全部可选，兼容旧库</td></tr>
+      <tr><td><code>scope.ts</code></td><td>作用域解析、可读集合、提升规则</td><td>非法 scope 一律当 owner</td></tr>
+      <tr><td><code>access.ts</code></td><td>读取前的统一验权</td><td>检索前过滤，不靠提示词</td></tr>
+      <tr><td><code>ranking.ts</code> + <code>text.ts</code></td><td>打分与字组相似度</td><td>IDF 加权，分母用并集</td></tr>
+      <tr><td><code>render.ts</code></td><td>渲染成给模型看的文本</td><td>分 general / scoped；超长整条跳过</td></tr>
+      <tr><td><code>index-layer.ts</code></td><td>索引结构、渲染、裁剪</td><td>≤40 条 / ≤4000 字符；悬挂引用丢弃</td></tr>
+      <tr><td><code>promote.ts</code></td><td>提升到通用层的判据与执行</td><td>复制不移动；重复提升拦截</td></tr>
+      <tr><td><code>compact.ts</code> + <code>compact-service.ts</code></td><td>合并重复记忆</td><td>证据并集；原记录标 superseded</td></tr>
+      <tr><td><code>forget.ts</code> + <code>forget-service.ts</code></td><td>归档冷掉记忆</td><td>四条保护；可逆</td></tr>
+      <tr><td><code>dream.ts</code> + <code>dream-effects.ts</code></td><td>回放整合 + 四项副作用</td><td>回放决定记什么，副作用决定怎么组织</td></tr>
+      <tr><td><code>service.ts</code></td><td>把以上串起来</td><td>分池配额、scope 参数化</td></tr>
+      <tr><td><code>execution/scene-compaction.ts</code></td><td>对话现场状态</td><td>只保留影响接话的内容</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note" style="margin-top:32px">
+    <b>这图里哪些是验证过的、哪些不是。</b><br>
+    验证过：分层隔离、提升后跨群可见、压缩证据不丢、归档可逆、分场景索引分得开、IDF 改善排序、对话压缩出可用的现场状态。
+    用的都是线上真实数据（287 条记忆 + 两个真实群）。<br>
+    没验证：长期跑下来索引会不会漂、四项全开时一次 Dream 的 token 成本、归档会不会误伤。
+    这些要接真实群聊跑一段时间才知道。
+  </div>
+
+</div>
+</body>
+</html>

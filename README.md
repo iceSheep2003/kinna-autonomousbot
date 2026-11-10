@@ -152,6 +152,11 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
 拿这些关键词用 `bilibili.search` 去找；`bilibili.discover`（推荐/热门/排行）只用来补充，
 实在想不起来时才退回推荐。工具描述里也写明了「不要用泛泛的词（比如『视频』『好看』）」。
 
+### 记忆机制总图
+
+一张图讲清整套机制（一条记忆怎么进库、Dream 夜里怎么重构、下次醒来怎么被想起来）：
+**[docs/memory-map.html](docs/memory-map.html)** · [PNG 版](docs/memory-map.png)
+
 ### 记忆分层
 
 记忆分两层（`src/memory/scope.ts`）：
