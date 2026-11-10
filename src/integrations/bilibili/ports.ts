@@ -48,6 +48,13 @@ export interface BilibiliVideo {
   meta(bvid: string, page: number, signal: AbortSignal): Promise<VideoMeta>;
 }
 
+/** 找一个可看的视频。self 要靠它挑今天看什么，而不是等别人给 bvid。 */
+export interface BilibiliFeed {
+  discover(input: { limit: number; source: 'recommend' | 'popular' | 'ranking'; signal: AbortSignal }): Promise<Array<{
+    bvid: string; title: string; owner: string; durationSeconds: number; play: number; category: string;
+  }>>;
+}
+
 export interface BilibiliMessages {
   comments(input: { aid: number; bvid: string; limit: number; sort: 'time' | 'hot' }, signal: AbortSignal): Promise<Array<{ rpid: number; text: string; user: string; likes: number; replies: number; at: number }>>;
   postComment(input: { aid: number; bvid: string; message: string; rootRpid?: number; parentRpid?: number }, signal: AbortSignal): Promise<{ rpid: number }>;

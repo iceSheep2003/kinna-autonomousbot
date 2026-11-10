@@ -1,4 +1,4 @@
-import type { BilibiliMessages, BilibiliTransport, BilibiliVideo, VideoMeta } from '../../integrations/bilibili/ports.js';
+import type { BilibiliFeed, BilibiliMessages, BilibiliTransport, BilibiliVideo, VideoMeta } from '../../integrations/bilibili/ports.js';
 import { BilibiliError } from './client.js';
 import { pickStream, type PlayData } from './stream.js';
 
@@ -14,7 +14,7 @@ interface ReplyRow {
 interface ReplyData { replies?: ReplyRow[] | null; hots?: ReplyRow[] | null; page?: { count?: number } }
 
 /** B 站账号的读写接口：视频信息、评论、发评论、发动态。写操作由传输层补 csrf。 */
-export class BilibiliApi implements BilibiliVideo, BilibiliMessages {
+export class BilibiliApi implements BilibiliVideo, BilibiliMessages, BilibiliFeed {
   constructor(private readonly transport: BilibiliTransport) {}
 
   async meta(bvid: string, page: number, signal: AbortSignal): Promise<VideoMeta> {
@@ -34,6 +34,23 @@ export class BilibiliApi implements BilibiliVideo, BilibiliMessages {
       query: { bvid: input.bvid, cid: input.cid, fnval: 16, qn: 80, fourk: 0 }, signal: input.signal,
     });
     return pickStream(play);
+  }
+
+  /**
+   * 找可看的视频。默认用首页推荐（个性化），没有就退回热门、排行榜。
+   * 这些接口的字段名不统一（list / item / duration 有的以秒有的以毫秒），所以做一次归一化。
+   */
+  async discover(input: { limit: number; source: 'recommend' | 'popular' | 'ranking'; signal: AbortSignal }) {
+    const limit = Math.max(1, Math.min(20, input.limit));
+    const path = input.source === 'ranking'
+      ? '/x/web-interface/ranking/v2'
+      : input.source === 'popular' ? '/x/web-interface/popular' : '/x/web-interface/wbi/index/top/feed/rcmd';
+    const query: Record<string, string | number> = input.source === 'ranking'
+      ? { rid: 0, type: 'all' }
+      : { ps: limit, pn: 1 };
+    const data = await this.transport.request<{ list?: unknown[]; item?: unknown[] }>({ method: 'GET', path, query, signal: input.signal });
+    const rows = (data.list ?? data.item ?? []).slice(0, limit) as Array<Record<string, unknown>>;
+    return rows.map(row => normalizeVideo(row)).filter(item => item.bvid !== '');
   }
 
   async comments(input: { aid: number; bvid: string; limit: number; sort: 'time' | 'hot' }, signal: AbortSignal) {
@@ -84,3 +101,22 @@ export class BilibiliApi implements BilibiliVideo, BilibiliMessages {
 }
 
 export { pickStream };
+
+const text = (value: unknown, max = 200): string => typeof value === 'string' ? value.slice(0, max) : '';
+const num = (value: unknown): number => Number.isFinite(Number(value)) ? Number(value) : 0;
+
+/**
+ * 推荐/热门/排行榜的字段各不相同，统一成同一份形状；缺的字段给空值而不是猜。
+ * 时长的坑最多：推荐给秒，有些接口给毫秒，排行榜干脆给 0（要另取）。
+ */
+function normalizeVideo(row: Record<string, unknown>) {
+  const duration = num(row.duration);
+  return {
+    bvid: text(row.bvid, 20),
+    title: text(row.title, 120),
+    owner: text((row.owner as { name?: unknown } | undefined)?.name),
+    durationSeconds: duration > 86_400 ? Math.round(duration / 1000) : duration,
+    play: num((row.stat as { view?: unknown } | undefined)?.view),
+    category: text(row.tname) || text(row.typename),
+  };
+}

@@ -129,3 +129,14 @@ test('每日任务看板接口：未配置时 404，配置后返回今天的进�
     assert.equal(remind.json().sent, true);
   } finally { await withTodo.close(); }
 });
+
+test('self 的指令里写了日常流程，且强调「只有拿到回执才算做完」', async () => {
+  const { selfInstructions } = await import('../src/self/session.js');
+  const { defaultPersonality } = await import('../src/shared/persona.js');
+  const text = selfInstructions(defaultPersonality);
+  assert.match(text, /每天都要做的/);
+  assert.match(text, /先看一眼今天做到哪了/);
+  assert.match(text, /只有真的拿到了平台回执才算做完/);
+  // 不硬编码具体平台：self 的指令不该出现 bilibili 字样，避免把某个平台写进人格层。
+  assert.doesNotMatch(text, /bilibili/i);
+});

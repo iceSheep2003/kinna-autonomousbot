@@ -336,3 +336,22 @@ test('内联 data: URL 不受 8192 字符的外部链接上限限制', async () 
     assert.equal(image.image_url.url, big, 'data URL 应原样传给模型，而不是被当成超长外链丢掉');
   } finally { globalThis.fetch = original; }
 });
+
+test('发现视频：把推荐/热门/排行榜的字段归一化，缺的给空值不瞎猜', async () => {
+  const { BilibiliApi } = await import('../src/infrastructure/bilibili/api.js');
+  const transport = { request: async () => ({ list: [
+    { bvid: 'BV1xx4y1x7xx', title: '标题一', owner: { name: 'UP甲' }, duration: 600, stat: { view: 1234 }, tname: '科技' },
+    { bvid: 'BV2yy4y1x7yy', title: '标题二', duration: 900_000, stat: { view: 0 } },
+    { title: '没有 bvid 的脏数据' },
+  ] }) };
+  const api = new BilibiliApi(transport as never);
+  const list = await api.discover({ limit: 5, source: 'recommend', signal: AbortSignal.timeout(1000) });
+  assert.equal(list.length, 2, '缺 bvid 的行应被丢掉');
+  assert.equal(list[0]!.owner, 'UP甲');
+  assert.equal(list[0]!.durationSeconds, 600);
+  assert.equal(list[0]!.category, '科技');
+  // 毫秒级时长要换算成秒
+  assert.equal(list[1]!.durationSeconds, 900);
+  assert.equal(list[1]!.owner, '');
+  assert.equal(list[1]!.category, '');
+});

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CapabilityRegistrar } from '../../capabilities/ports.js';
 import type { BilibiliConfig, Draft } from './types.js';
-import type { BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
+import type { BilibiliFeed, BilibiliMessages, BilibiliVideo, HeatSampler, VideoShots } from './ports.js';
 import type { DraftQueue } from './drafts.js';
 import { canReadVideo } from './policy.js';
 import { pickMoments } from './heat.js';
@@ -20,6 +20,8 @@ export interface BilibiliToolsDeps {
   /** 截图文件对外可访问的地址前缀；DeepSeek 靠它下载图片。 */
   publicBaseUrl?: string;
   drafts: DraftQueue;
+  /** 发现视频：self 靠它挑今天看什么。不发 bvid 时就靠这个。 */
+  feed?: BilibiliFeed;
   /** 每日任务看板；没配置时 todo 工具不注册。 */
   todo?: TodoBoard;
 }
@@ -56,7 +58,8 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
 
   registry.register({
     name: 'bilibili.draft_comment', description: '回复某个视频（或某条评论）。按配置的策略，可能直接发出，也可能先存成草稿等人批准——返回值会说明是哪一种。'
-      + '。想让评论像真人：说你看完后的具体感受或疑问，不要复述标题、不要用「这个视频真不错」这类空话，也不要写「我是AI」或自我介绍；你不必假装是人，但也别机器腔。',
+      + '。想让评论像真人：说你看完后的具体感受或疑问，不要复述标题、不要用「这个视频真不错」这类空话，也不要写「我是AI」或自我介绍；你不必假装是人，但也别机器腔。'
+      + '。只写你真正看到/读到的东西：没看到画面就只说评论区看到的事，不要假装看过视频。',
     effect: 'read', input: z.object({ bvid: VIDEO, message: z.string().min(1).max(1000), reason: z.string().min(1).max(500), replyToRpid: z.number().int().positive().optional() }),
     async run(raw, { signal }) {
       const input = raw as { bvid: string; message: string; reason: string; replyToRpid?: number };
@@ -103,6 +106,7 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
     },
   });
 
+  if (deps.feed) registerDiscoverTool(registry, deps.feed);
   if (deps.todo) registerTodoTools(registry, deps.todo);
 
   registry.register({
@@ -114,6 +118,22 @@ export function registerBilibiliTools(registry: CapabilityRegistrar, deps: Bilib
         dynamic: { used: drafts.used('dynamic'), remaining: drafts.remaining('dynamic'), policy: config.dynamicPolicy },
         pendingDrafts: drafts.pending().map(publicDraft),
       };
+    },
+  });
+}
+
+/** 找可看的视频：每日任务第一步，不能只等别人给 bvid。 */
+function registerDiscoverTool(registry: CapabilityRegistrar, feed: BilibiliFeed): void {
+  registry.register({
+    name: 'bilibili.discover', description: '找几个可以看的视频（默认按推荐，也可热门/排行）。挑自己真的想看的，不要为了完成任务随便点一个。返回 bvid、标题、UP、时长。',
+    effect: 'read', input: z.object({
+      limit: z.number().int().min(1).max(20).default(8),
+      source: z.enum(['recommend', 'popular', 'ranking']).default('recommend'),
+    }),
+    async run(raw, { signal }) {
+      const input = raw as { limit: number; source: 'recommend' | 'popular' | 'ranking' };
+      const videos = await feed.discover({ ...input, signal });
+      return { source: input.source, videos };
     },
   });
 }
@@ -168,7 +188,7 @@ function registerVideoTool(registry: CapabilityRegistrar, deps: BilibiliToolsDep
     effect: 'read', input: z.object({ bvid: VIDEO, page: Page, frames: z.number().int().min(1).max(8).optional() }),
     async run(raw, { signal }) {
       const input = raw as { bvid: string; page: number; frames?: number };
-      if (!deps.shots) throw new Error('读视频需要无头浏览器（playwright）与截图地址配置');
+      if (!deps.shots) throw new Error('读视频需要无头浏览器（playwright）与截图地址配置——这次没看到画面，不要凭标题或评论当作看过');
       const meta = await video.meta(input.bvid, input.page, signal);
       guard(meta);
       const heat = deps.heat ? await deps.heat.heat({ bvid: meta.bvid, cid: meta.cid, aid: meta.aid, signal }) : null;
