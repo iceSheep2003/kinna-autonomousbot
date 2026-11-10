@@ -46,6 +46,8 @@ export interface Memory {
   accessCount?: number;
   createdAt?: number;
   updatedAt?: number;
+  /** 被压缩/合并进哪一条：沿它能找回原始出处，不是删除。 */
+  mergedInto?: string;
 }
 
 export interface Reflection { id: string; sourceRefs: number[]; summary: string; conclusions: string[]; proposedChanges: string[]; at: number }
