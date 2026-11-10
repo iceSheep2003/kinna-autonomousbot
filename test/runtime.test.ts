@@ -78,7 +78,7 @@ test('Dream 翻出的机会通过 inbox 交到 self 手里：是素材，不是�
     // 机会落在 self 的 inbox 里，下一次 self 上下文能读到；Dream 自己仍然只写记忆。
     const inbox = f.store.experiences(0, 100, 'self.inbox').filter(e => e.kind === 'dream.opportunity');
     assert.equal(inbox.length, 1);
-    assert.equal(f.store.list('memories').length, 0);
+    assert.equal(f.repositories.memory.count(), 0);
   } finally { f.close(); }
 });
 
@@ -217,11 +217,11 @@ test('Dream 只发布已验证的快照，按事件游标增量整理，不能�
     f.store.enqueue('dream', 'dream', {}, NOW + 1000);
     await f.runtime.tick(NOW + 1000);
     assert.equal(f.store.get('meta', 'dreamCursor'), undefined);
-    assert.equal(f.store.list('memories').length, 0);
+    assert.equal(f.repositories.memory.count(), 0);
     const cutoff = f.store.latestSequence(); fail = false;
     await f.runtime.tick(NOW + 4000);
     assert.equal(f.store.get('meta', 'dreamCursor'), cutoff);
-    assert.equal(f.store.list('memories').length, 1);
+    assert.equal(f.repositories.memory.count(), 1);
     assert.equal(f.store.list('goals').length, 0);
     assert.ok(f.store.latestSequence() > cutoff);
   } finally { f.close(); }

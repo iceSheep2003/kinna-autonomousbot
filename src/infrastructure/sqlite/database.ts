@@ -2,6 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import type { Experience } from '../../memory/types.js';
 import type { Job } from '../../runtime/types.js';
+import { ensureMemorySchema } from './memory-schema.js';
+import { migrateLegacyMemories } from './memory-migrate.js';
 
 /** 单进程 SQLite 事务仓库。没有在事务内跨 await；worker 与 HTTP 共用此连接。 */
 export class Store {
@@ -21,6 +23,10 @@ export class Store {
       CREATE TABLE IF NOT EXISTS model_calls (at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS leases (id TEXT PRIMARY KEY, owner TEXT NOT NULL, untilAt INTEGER NOT NULL);
     `);
+    // 记忆的关系表：老库打开时补上并迁移一次（见 memory-migrate.ts）。
+    ensureMemorySchema(this.db);
+    // 老库打开时自动迁一次；新库是空操作，已迁过的直接跳过。
+    migrateLegacyMemories(this);
   }
   transaction<T>(fn: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');

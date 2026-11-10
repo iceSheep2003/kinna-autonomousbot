@@ -15,5 +15,5 @@ for (let i = 0; i < 6; i++) await runtime.tick(now + i * 1000);
 store.enqueue('dream', 'dream', {}, now + 7000);
 await runtime.tick(now + 7000);
 await runtime.tick(now + 8000);
-console.log(JSON.stringify({ note: '离线模拟，仅验证程序闭环，不代表真实 LLM 能力', self: store.get('subject', 'self'), goals: store.list('goals'), executions: store.list('executions'), memories: store.list('memories'), schedules: store.list('schedules') }, null, 2));
+console.log(JSON.stringify({ note: '离线模拟，仅验证程序闭环，不代表真实 LLM 能力', self: store.get('subject', 'self'), goals: store.list('goals'), executions: store.list('executions'), memories: store.db.prepare('SELECT * FROM memories LIMIT 100').all(), schedules: store.list('schedules') }, null, 2));
 runtime.stop(); store.close();

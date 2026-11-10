@@ -101,8 +101,8 @@ test('端到端：压缩后库里条数减少，但证据一条没少', async ()
   });
   const result = await compactor.run();
   assert.ok(result.merged >= 1);
-  const live = store.list<Memory>('memories', 500).filter(item => (item.status ?? 'active') === 'active');
-  const allEvidence = new Set(store.list<Memory>('memories', 500).flatMap(item => item.evidence));
+  const live = repo.recent(500).filter(item => (item.status ?? 'active') === 'active');
+  const allEvidence = new Set(repo.recent(500).flatMap(item => item.evidence));
   assert.ok(live.length < rows.length, '活跃记忆应减少');
   assert.equal(allEvidence.size, 45, '证据一条都不能少');
   store.close();
@@ -121,7 +121,7 @@ test('模型说「不是同一件事」时不动，也不删记录', async () =>
   });
   const result = await compactor.run();
   assert.equal(result.merged, 0);
-  assert.equal(store.list<Memory>('memories', 500).filter(item => (item.status ?? 'active') === 'active').length, 45);
+  assert.equal(repo.recent(500).filter(item => (item.status ?? 'active') === 'active').length, 45);
   store.close();
 });
 
@@ -187,7 +187,7 @@ test('一条记忆只能被合并一次，不会同时进两组', async () => {
     } as never,
   });
   const result = await compactor.run();
-  const retired = store.list<Memory>('memories', 500).filter(item => item.status === 'superseded');
+  const retired = repo.recent(500).filter(item => item.status === 'superseded');
   const ids = retired.map(item => item.id);
   assert.equal(new Set(ids).size, ids.length, '同一条不该被两次标记退役');
   assert.ok(result.merged >= 1);

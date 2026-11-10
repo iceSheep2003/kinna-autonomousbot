@@ -3,6 +3,7 @@ import type { DreamVersion, Memory, RecallRequest, Reflection } from '../../memo
 import type { Store } from './database.js';
 import { searchTerms, matchSql } from './search.js';
 import { readIndex, readIndexes, writeIndex } from './memory-index.js';
+import { fromRow, upsertMemory, writeEvidence } from './memory-rows.js';
 
 /** 生命周期默认值：旧记忆（Dream 旧版只有五个字段）与新写入的修订共用一张表。 */
 function lifecycleDefaults(stamp: number): Pick<Memory,
@@ -31,47 +32,76 @@ export class SqliteExperienceRepository implements ExperienceRepository {
 }
 export class SqliteMemoryRepository implements MemoryRepository {
   constructor(private readonly db: Store) {}
-  get(id: string) { return this.db.get<Memory>('memories', id); }
-  recent(limit: number) { return this.db.list<Memory>('memories', limit); }
+
+  get(id: string) { return fromRow(this.db.db.prepare('SELECT * FROM memories WHERE id=?').get(id)); }
+  recent(limit: number) {
+    return this.db.db.prepare('SELECT * FROM memories ORDER BY updated_at DESC LIMIT ?').all(limit).map(row => fromRow(row)!);
+  }
+
+  /**
+   * 检索：先在关系表上做子串匹配。
+   *
+   * 仍然是全表扫——但按真实规模（一年四千条）这只要几毫秒，
+   * 加全文索引是给十几年后的量级做优化，不值得多一层维护成本。
+   * 等真慢了再用 EXPLAIN QUERY PLAN 看瓶颈，而不是现在猜。
+   */
   search(query: string, limit: number) {
     const terms = searchTerms(query);
-    return terms.length ? this.db.query<Memory>('memories', matchSql(terms), terms, limit) : this.recent(limit);
+    if (terms.length === 0) return this.recent(limit);
+    const predicate = terms.map(() => 'instr(lower(content),?)>0').join(' OR ');
+    return this.db.db.prepare(`SELECT * FROM memories WHERE ${predicate} ORDER BY updated_at DESC LIMIT ?`)
+      .all(...terms, limit).map(row => fromRow(row)!);
   }
-  /** 硬过滤前的候选池；状态/过期/可见性由 memory/access.ts 在读取时重新验权。 */
+
+  /**
+   * 候选池。**这里才用得上索引**：作用域 + 状态是第一道过滤，走 memories_scope。
+   * 之前是 `'1=1'` 全表取一批，再把整批交给 access.ts 过滤。
+   */
   candidates(request: RecallRequest): Memory[] {
-    return this.db.query<Memory>('memories', '1=1', [], Math.max(100, request.limit * 20));
+    const cap = Math.max(100, request.limit * 20);
+    const scope = request.scope ?? 'owner';
+    // 归档的默认不进候选池，但**主动回想时要进**——否则「遗忘可逆」根本无从生效：
+    // 这里过滤掉，后面 access.ts 的 includeArchived 就再也没机会看到它们。
+    const statuses = request.includeArchived === true
+      ? "'active','candidate','archived'"
+      : "'active','candidate'";
+    const rows = this.db.db.prepare(
+      `SELECT * FROM memories WHERE status IN (${statuses}) AND scope IN ('owner', ?)
+       ORDER BY updated_at DESC LIMIT ?`).all(scope, cap);
+    return rows.map(row => fromRow(row)!);
   }
-  /** 被注入过一次就记一次访问，不提升 revision：这不是内容变更。 */
+
+  /** 被注入过一次就记一次访问；不提升 revision，这不是内容变更。 */
   reinforce(ids: string[], now: number) {
-    for (const id of ids) {
-      const memory = this.get(id);
-      if (!memory) continue;
-      this.db.put('memories', id, { ...memory, accessCount: (memory.accessCount ?? 0) + 1, lastAccessedAt: now });
-    }
+    const update = this.db.db.prepare('UPDATE memories SET access_count=access_count+1, last_accessed_at=? WHERE id=?');
+    for (const id of ids) update.run(now, id);
   }
+
   publish(memory: Memory) {
     const prior = this.get(memory.id);
     if (prior) this.db.put('memory-history', `${memory.id}:${prior.revision}`, prior);
-    this.db.put('memories', memory.id, withDefaults(memory));
+    const row = withDefaults(memory);
+    upsertMemory(this.db.db, row);
+    writeEvidence(this.db.db, row);
   }
+
   cursor() { return this.db.get<number>('meta', 'dreamCursor') ?? 0; }
-  /** 记忆索引：每个作用域一份。 */
   index(scope = 'owner') { return readIndex(this.db, scope); }
-  /** 所有索引，供装配层批量取用。 */
   indexes() { return readIndexes(this.db); }
   publishIndex(index: import('../../memory/index-layer.js').MemoryIndex) { writeIndex(this.db, index); }
-  count() { return Number(this.db.db.prepare("SELECT COUNT(*) AS n FROM documents WHERE collection='memories'").get()!.n); }
+  count() { return Number(this.db.db.prepare('SELECT COUNT(*) AS n FROM memories').get()!.n); }
+
   publishDream(version: DreamVersion) {
     this.db.put('dreams', version.id, version);
     this.db.put('meta', 'dreamCursor', version.cutoff);
   }
   /** 整合 id 是随机 UUID，文档表排序不可用；取一批再按 at 排，量级是有限的历史整合。 */
   recentDreams(limit: number): DreamVersion[] {
-    return this.db.list<DreamVersion>('dreams', 500)
-      .sort((a, b) => b.at - a.at)
-      .slice(0, Math.max(1, limit));
+    return this.db.list<DreamVersion>('dreams', 500).sort((a, b) => b.at - a.at).slice(0, Math.max(1, limit));
   }
+
 }
+
 /** 门控状态与记忆内容分开存，避免「整理记忆」顺手改掉「何时该整理」。 */
 export class SqliteDreamStateRepository implements DreamStateRepository {
   constructor(private readonly db: Store) {}
