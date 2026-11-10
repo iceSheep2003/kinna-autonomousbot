@@ -14,7 +14,29 @@ import type { QqMediaSource, QqPerception } from './ports.js';
  * 2. **有超时**：读图超过 8 秒就放弃，标成「未能识别」而不是让消息卡住。
  * 3. **标明是识别结果**：`（模型识别，可能有误）`——它是资料，不是事实。
  */
-export const PERCEIVE_LIMITS = { maxImages: 2, timeoutMs: 8000 } as const;
+export const PERCEIVE_LIMITS = {
+  maxImages: 2,
+  timeoutMs: 8000,
+  /**
+   * 描述最多这么多字。
+   * 实测让它「把关键信息读出来」时会写一大段（书单截图能列出十几行）；
+   * 描述是资料不是正文，太长会把整轮预算吃光，反而挤掉对话本身。
+   */
+  maxChars: 400,
+} as const;
+
+/**
+ * 默认提问。
+ *
+ * 一开始只写「简要描述画面」，实测对群聊里最常见的**文字截图**没用：
+ * 它回「这是一张书单截图」，而图里真正有用的是那些书名和日期。
+ * 群聊发图多半是在分享信息（截图、表格、聊天记录、题目），
+ * 所以要求它把关键信息读出来，而不是只说「这是一张图」。
+ */
+export const DEFAULT_IMAGE_QUESTION =
+  '这是一张群聊里发的图。用一两句话说清它是什么；'
+  + '如果图里有文字（截图、表格、聊天记录、题目、公告等），把关键信息也读出来'
+  + '（书名/数字/日期/结论这类），不要只说「这是一张截图」。';
 
 export interface PerceiveDeps {
   media: QqMediaSource;
@@ -24,8 +46,14 @@ export interface PerceiveDeps {
   signal?: AbortSignal;
 }
 
+/** 压成一行并限长：换行在上下文里只是浪费预算，超长描述会挤掉对话。 */
+function clip(summary: string): string {
+  const oneLine = summary.replace(/\s+/g, ' ').trim();
+  return oneLine.length <= PERCEIVE_LIMITS.maxChars ? oneLine : `${oneLine.slice(0, PERCEIVE_LIMITS.maxChars)}…`;
+}
+
 /** 一张图的描述；失败返回带说明的占位，不返回空串（空串会让模型以为没有图）。 */
-export async function describeImage(ref: MediaRef, deps: PerceiveDeps, question = '简要描述这张图的画面内容，一句话'): Promise<string> {
+export async function describeImage(ref: MediaRef, deps: PerceiveDeps, question = DEFAULT_IMAGE_QUESTION): Promise<string> {
   const cached = deps.cache?.get(ref.id);
   if (cached !== undefined) return cached;
   try {
@@ -33,8 +61,9 @@ export async function describeImage(ref: MediaRef, deps: PerceiveDeps, question 
       ? AbortSignal.timeout(PERCEIVE_LIMITS.timeoutMs)
       : AbortSignal.any([deps.signal, AbortSignal.timeout(PERCEIVE_LIMITS.timeoutMs)]);
     const bytes = await deps.media.acquire(ref, signal);
-    const summary = (await deps.perception.inspect(bytes, question, signal)).trim();
-    if (summary === '') return '[图片：识别结果为空]';
+    const raw = (await deps.perception.inspect(bytes, question, signal)).trim();
+    if (raw === '') return '[图片：识别结果为空]';
+    const summary = clip(raw);
     deps.cache?.put(ref.id, summary);
     return summary;
   } catch {

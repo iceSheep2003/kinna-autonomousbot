@@ -68,3 +68,19 @@ test('语音转写失败时说「未能转写」，不假装听见了', async ()
 test('识别结果为空时不返回空串', async () => {
   assert.match(await describeImage(ref('a'), deps({ summary: '   ' })), /识别结果为空/);
 });
+
+test('描述压成一行并限长：超长会把整轮预算吃光', async () => {
+  const long = '书名一 27年1月\n书名二 27年5月\n'.repeat(60);
+  const out = await describeImage(ref('a'), deps({ summary: long }));
+  assert.equal(out.length, PERCEIVE_LIMITS.maxChars + 1, '限长 + 省略号');
+  assert.doesNotMatch(out, /\n/, '压成一行，换行只是浪费预算');
+  assert.ok(out.endsWith('…'));
+});
+
+test('默认提问会要求读出图里的关键信息，而不是只说「这是一张截图」', async () => {
+  const out = await describeImagesIn('[图片]', [ref('a')], {
+    ...deps({ summary: '现货：基础30讲；题源1000题 27年1月发货' }),
+  });
+  assert.match(out, /基础30讲/);
+  assert.match(out, /27年1月/, '群聊发图多半是分享信息，书名和日期才是重点');
+});
