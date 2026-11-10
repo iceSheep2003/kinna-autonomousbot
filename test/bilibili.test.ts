@@ -319,3 +319,20 @@ test('撤回工具：按 bvid 找回 aid 再删评论；缺参数时直接拒绝
   assert.deepEqual(result, { deleted: 'comment', rpid: 5 });
   assert.deepEqual(deleted, [{ kind: 'comment', id: 5 }]);
 });
+
+test('内联 data: URL 不受 8192 字符的外部链接上限限制', async () => {
+  const { OpenAICompatibleModel } = await import('../src/infrastructure/models/openai-compatible.js');
+  const original = globalThis.fetch; let sent: any;
+  globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+    sent = JSON.parse(init.body as string);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ result: 'ok' }) } }] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const model = new OpenAICompatibleModel({ baseUrl: 'https://example.invalid/v1', apiKey: 'k', model: 'deepseek-flash' });
+    const big = `data:image/jpeg;base64,${'A'.repeat(200_000)}`;
+    await model.decide({ role: 'execution', instructions: 'x', context: {}, schema: z.object({ result: z.string() }), images: [{ url: big }] });
+    const user = sent.messages.find((m: { role: string }) => m.role === 'user');
+    const image = user.content.find((b: { type: string }) => b.type === 'image_url');
+    assert.equal(image.image_url.url, big, 'data URL 应原样传给模型，而不是被当成超长外链丢掉');
+  } finally { globalThis.fetch = original; }
+});

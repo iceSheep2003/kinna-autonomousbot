@@ -41,6 +41,8 @@ const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpe
 
 /** 图片 URL 太长或没有 URL 时退回内联；格式按扩展名猜，猜不到按 jpeg。 */
 async function imageSource(image: ModelImage): Promise<string> {
+  // data: URL 本身就是内联数据（可达几百 KB），不受 8192 字符的「外部链接」上限约束。
+  if (image.url?.startsWith('data:')) return image.url;
   if (image.url && image.url.length <= 8192) return image.url;
   if (!image.path) throw new Error('图片既没有可用 URL 也没有本地文件');
   const bytes = await readFile(image.path);
