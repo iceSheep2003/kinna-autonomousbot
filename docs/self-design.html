@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>self 的设计</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#6b6b6b;--line:#dcd8d0;--bg:#faf8f4;--card:#fff;
+    --self:#2c4a7c;--ctx:#2f6f4f;--dec:#6b3f7a;--go:#8a5a2b;--warn:#8a6a1f}
+  *{box-sizing:border-box}
+  body{margin:0;padding:48px 32px 90px;background:var(--bg);color:var(--ink);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",sans-serif}
+  .wrap{max-width:1040px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 36px;font-size:14px}
+  h2{font-size:17.5px;margin:54px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h2 .n{color:var(--muted);font-weight:400;margin-right:10px}
+  h3{font-size:14.5px;margin:24px 0 10px}
+  .lead{color:var(--muted);font-size:13.5px;margin:8px 0 18px}
+  code{background:#f0ede7;padding:1px 5px;border-radius:3px;font-size:12.5px;font-family:ui-monospace,monospace}
+  pre{margin:0;padding:14px 16px;background:#fbfaf7;border:1px solid var(--line);border-radius:6px;
+    overflow-x:auto;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;background:#f5f2ec}
+  td:first-child{white-space:nowrap;font-family:ui-monospace,monospace;font-size:12.5px}
+  .note{background:#fdf6e8;border-left:3px solid #c99a3f;padding:11px 15px;font-size:13px;margin:16px 0;border-radius:0 4px 4px 0}
+  svg{display:block;width:100%;height:auto;margin:14px 0}
+  .quote{background:#eef2f8;border-left:3px solid var(--self);padding:11px 15px;font-size:13px;margin:14px 0;border-radius:0 4px 4px 0;color:#3a4f72}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>self 的设计</h1>
+<p class="sub">self 是「主体自己安静待着」的那个场合——整套系统里唯一的决策者。</p>
+
+<!-- 01 -->
+<h2><span class="n">01</span>一句话定位</h2>
+<div class="quote">
+不是调度器，不是聊天机器人。<b>是一个会自己找事做、也会什么都不做的人。</b><br>
+场景（scene）是「跟人说话时的它」，self 是「没人时的它」。同一份人格、同一份记忆，不同场合。
+</div>
+<p class="lead">这个定位直接决定了指令怎么写。指令里有一句是刻意的：</p>
+<pre><span class="c">「门控、作业、调度、报错是机器自己的事，不是你的经历，不用去研究它们。」</span></pre>
+<p class="lead">早期版本把它写成调度器（「形成并调整方向」「使用稳定 ID 更新目标」），模型就真的只调度、不交往——
+精力全花在研究门控和作业错误上。改成第一人称、以关系为对象之后才正常。</p>
+
+<!-- 02 -->
+<h2><span class="n">02</span>一次唤醒的完整流程</h2>
+
+<svg viewBox="0 0 1000 230" role="img" aria-label="self 唤醒流程">
+  <defs><marker id="s1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#a8a29a"/></marker></defs>
+
+  <rect x="20" y="24" width="140" height="62" rx="6" fill="#fff" stroke="#dcd8d0"/>
+  <text x="90" y="48" text-anchor="middle" font-size="12">被唤醒</text>
+  <text x="90" y="66" text-anchor="middle" font-size="10.5" fill="#6b6b6b">inbox 有新东西</text>
+  <text x="90" y="80" text-anchor="middle" font-size="10.5" fill="#6b6b6b">或到点了</text>
+
+  <line x1="160" y1="55" x2="188" y2="55" stroke="#a8a29a" stroke-width="1.3" marker-end="url(#s1)"/>
+
+  <rect x="190" y="14" width="170" height="82" rx="6" fill="#e9f2ec" stroke="#2f6f4f"/>
+  <text x="275" y="36" text-anchor="middle" font-size="12" fill="#2f6f4f" font-weight="600">组上下文</text>
+  <text x="275" y="55" text-anchor="middle" font-size="10.5" fill="#4f7d63">有界快照</text>
+  <text x="275" y="71" text-anchor="middle" font-size="10.5" fill="#4f7d63">索引 + 记忆 + 未读 + 待办</text>
+  <text x="275" y="87" text-anchor="middle" font-size="10.5" fill="#4f7d63">预算 ~3000 字符的查询词</text>
+
+  <line x1="360" y1="55" x2="388" y2="55" stroke="#a8a29a" stroke-width="1.3" marker-end="url(#s1)"/>
+
+  <rect x="390" y="24" width="140" height="62" rx="6" fill="#eef2f8" stroke="#2c4a7c"/>
+  <text x="460" y="48" text-anchor="middle" font-size="12" fill="#2c4a7c" font-weight="600">模型决策</text>
+  <text x="460" y="66" text-anchor="middle" font-size="10.5" fill="#4a5f80">11 个字段的 JSON</text>
+  <text x="460" y="80" text-anchor="middle" font-size="10.5" fill="#4a5f80">（见第 03 节）</text>
+
+  <line x1="530" y1="55" x2="558" y2="55" stroke="#a8a29a" stroke-width="1.3" marker-end="url(#s1)"/>
+
+  <rect x="560" y="14" width="170" height="82" rx="6" fill="#f2e9f5" stroke="#6b3f7a"/>
+  <text x="645" y="36" text-anchor="middle" font-size="12" fill="#6b3f7a" font-weight="600">提交（事务）</text>
+  <text x="645" y="55" text-anchor="middle" font-size="10.5" fill="#7d5a8a">先返回 Commit 闭包</text>
+  <text x="645" y="71" text-anchor="middle" font-size="10.5" fill="#7d5a8a">再一次性应用</text>
+  <text x="645" y="87" text-anchor="middle" font-size="10.5" fill="#7d5a8a">要么全成，要么全不成</text>
+
+  <line x1="730" y1="55" x2="758" y2="55" stroke="#a8a29a" stroke-width="1.3" marker-end="url(#s1)"/>
+
+  <rect x="760" y="24" width="220" height="62" rx="6" fill="#fff" stroke="#dcd8d0"/>
+  <text x="870" y="46" text-anchor="middle" font-size="12">记下这轮 + 推进游标</text>
+  <text x="870" y="64" text-anchor="middle" font-size="10.5" fill="#6b6b6b">还没读的 → 再唤醒一次</text>
+  <text x="870" y="79" text-anchor="middle" font-size="10.5" fill="#6b6b6b">（1 秒后）</text>
+
+  <!-- 提交后产生的东西 -->
+  <line x1="645" y1="96" x2="645" y2="126" stroke="#6b3f7a" stroke-width="1.2"/>
+  <line x1="110" y1="126" x2="890" y2="126" stroke="#6b3f7a" stroke-width="1.2"/>
+  <line x1="110" y1="126" x2="110" y2="148" stroke="#6b3f7a" stroke-width="1.2" marker-end="url(#s1)"/>
+  <line x1="370" y1="126" x2="370" y2="148" stroke="#6b3f7a" stroke-width="1.2" marker-end="url(#s1)"/>
+  <line x1="630" y1="126" x2="630" y2="148" stroke="#6b3f7a" stroke-width="1.2" marker-end="url(#s1)"/>
+  <line x1="890" y1="126" x2="890" y2="148" stroke="#6b3f7a" stroke-width="1.2" marker-end="url(#s1)"/>
+
+  <rect x="30" y="150" width="160" height="56" rx="6" fill="#fff" stroke="#8a5a2b"/>
+  <text x="110" y="172" text-anchor="middle" font-size="11.5" fill="#8a5a2b" font-weight="600">改目标 / 情绪</text>
+  <text x="110" y="192" text-anchor="middle" font-size="10.5" fill="#6b6b6b">主体状态变了</text>
+
+  <rect x="290" y="150" width="160" height="56" rx="6" fill="#fff" stroke="#8a5a2b"/>
+  <text x="370" y="172" text-anchor="middle" font-size="11.5" fill="#8a5a2b" font-weight="600">launch 起执行</text>
+  <text x="370" y="192" text-anchor="middle" font-size="10.5" fill="#6b6b6b">要跑一趟的事</text>
+
+  <rect x="550" y="150" width="160" height="56" rx="6" fill="#fff" stroke="#8a5a2b"/>
+  <text x="630" y="172" text-anchor="middle" font-size="11.5" fill="#8a5a2b" font-weight="600">act 直接调</text>
+  <text x="630" y="192" text-anchor="middle" font-size="10.5" fill="#6b6b6b">参数齐了的小动作</text>
+
+  <rect x="810" y="150" width="160" height="56" rx="6" fill="#fff" stroke="#8a5a2b"/>
+  <text x="890" y="172" text-anchor="middle" font-size="11.5" fill="#8a5a2b" font-weight="600">schedules</text>
+  <text x="890" y="192" text-anchor="middle" font-size="10.5" fill="#6b6b6b">未来某个时刻</text>
+
+</svg>
+
+<div class="note">
+<b>关键点：决策是「先算好、再一次性提交」。</b>模型返回的是一个 Commit 闭包，由 worker 在一个事务里应用——
+改了目标又起执行，两者要么一起生效，要么一起不生效。不会出现「目标改了、执行没起来」的半截状态。<br><br>
+另外：<b>每次唤醒只是有界的一轮</b>，不是一段无限长的对话。会话永久存在，但上下文不会无限增长。
+</div>
+
+<!-- 03 -->
+<h2><span class="n">03</span>它能决定什么：11 个字段</h2>
+<pre>{
+  <span class="k">"reflection"</span>: <span class="s">"..."</span>,        <span class="c">// 必填。这轮想了什么——不是给别人看的汇报，是给自己留的</span>
+  <span class="k">"direction"</span>: <span class="s">"..."</span>,         <span class="c">// 可选。整体方向变了才写</span>
+  <span class="k">"focus"</span>: <span class="s">"..."</span>,             <span class="c">// 可选。眼下的焦点</span>
+  <span class="k">"affect"</span>: { <span class="c">/* 情绪评价 */</span> },   <span class="c">// 可选。必须分清「看到什么/怎么解释/什么感受」</span>
+
+  <span class="k">"goals"</span>: [ <span class="c">/* 目标是新建/更新/放弃 */</span> ],   <span class="c">// max 12，必须带 reason + evidence</span>
+  <span class="k">"launch"</span>: [ <span class="c">/* Intent */</span> ],              <span class="c">// max 4。起一个独立执行上下文去办事</span>
+  <span class="k">"act"</span>: [ <span class="c">/* DirectAction */</span> ],          <span class="c">// max 4。直接调工具，不另开一轮</span>
+
+  <span class="k">"schedules"</span>: [ <span class="c">/* 定时 */</span> ],           <span class="c">// max 12。wake / execute / tool 三种</span>
+  <span class="k">"cancelSchedules"</span>: [<span class="s">"id"</span>],          <span class="c">// max 20</span>
+  <span class="k">"cancelExecutions"</span>: [<span class="s">"id"</span>],         <span class="c">// max 20</span>
+
+  <span class="k">"dream"</span>: <span class="b">false</span>,                     <span class="c">// 请 Dream 夜里整理一遍记忆</span>
+  <span class="k">"nextWakeAt"</span>: <span class="n">1794313508940</span>       <span class="c">// 下次想事情的时间（毫秒）</span>
+}</pre>
+
+<h3>三个值得说的约束</h3>
+<table>
+  <thead><tr><th></th><th>约束</th><th>为什么</th></tr></thead>
+  <tbody>
+    <tr><td>goals</td><td>必须带 <code>reason</code> 和 <code>evidence</code></td><td>没有理由的目标会变成空想；刚冒出来的兴趣允许 <code>evidence=[]</code>，但这要显式写出来</td></tr>
+    <tr><td>schedules</td><td>目标改动会取消旧日程</td><td>否则会出现「日程还按旧目标跑」的自相矛盾</td></tr>
+    <tr><td>act / launch</td><td>加起来不超过待办容量</td><td>一次唤醒起太多执行会互相挤，最后一件都没办成</td></tr>
+  </tbody>
+</table>
+
+<!-- 04 -->
+<h2><span class="n">04</span>它每轮看到什么：有界快照</h2>
+<p class="lead">11 块内容，每块都有上限。**没有一块是「全量」**——这是它能一直运转下去的原因。</p>
+
+<table>
+  <thead><tr><th>块</th><th>装什么</th><th>上限</th></tr></thead>
+  <tbody>
+    <tr><td>trigger</td><td>这轮为什么醒</td><td>—</td></tr>
+    <tr><td>previousAttemptError</td><td>上轮失败原因（重试时）</td><td>—</td></tr>
+    <tr><td>subject</td><td>身份 / 方向 / 情绪</td><td>—</td></tr>
+    <tr><td>goals</td><td>当前目标</td><td>20 条</td></tr>
+    <tr><td><b>memoryIndex</b></td><td>记忆索引（我知道自己记得什么）</td><td>≤40 条 / ≤4000 字符</td></tr>
+    <tr><td>memories</td><td>检索到的具体记忆</td><td>8 条，通用 40% / 场景 60%</td></tr>
+    <tr><td><b>observations</b></td><td>inbox 里没读过的（消息、机会、别人的话）</td><td>20 条</td></tr>
+    <tr><td>recent</td><td>自己最近几次决策</td><td>4 轮</td></tr>
+    <tr><td><b>todos</b></td><td>自己记下的待办</td><td>5 条（只给开着的）</td></tr>
+    <tr><td>capabilities</td><td>这个场景能用的工具</td><td>场景固化清单</td></tr>
+    <tr><td>schedules / executions</td><td>待触发的日程、进行中的执行</td><td>20 / 12</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+<b>加粗那三块是后来才有的，也正好是最关键的。</b><br>
+<code>memoryIndex</code> 解决「预算截断把重要的事砍掉了」——被砍的条目仍在索引里留一行，模型知道它存在，可以按需展开。<br>
+<code>todos</code> 解决「想做的事没有地方记」——不然每次醒来都从零开始想。<br>
+<code>observations</code> 是它跟世界唯一的接口：所有外部事件都从 inbox 进来，没有别的入口。
+</div>
+
+<!-- 05 -->
+<h2><span class="n">05</span>和别的模块什么关系</h2>
+
+<svg viewBox="0 0 1000 250" role="img" aria-label="self 与周边">
+  <defs><marker id="s2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#a8a29a"/></marker></defs>
+
+  <rect x="400" y="90" width="200" height="66" rx="8" fill="#2c4a7c"/>
+  <text x="500" y="116" text-anchor="middle" font-size="13.5" fill="#fff" font-weight="600">self</text>
+  <text x="500" y="136" text-anchor="middle" font-size="10.5" fill="#b9c9e0">唯一的决策者</text>
+
+  <rect x="60" y="20" width="180" height="52" rx="6" fill="#fff" stroke="#dcd8d0"/>
+  <text x="150" y="42" text-anchor="middle" font-size="11.5">inbox</text>
+  <text x="150" y="60" text-anchor="middle" font-size="10" fill="#6b6b6b">外部事件的唯一入口</text>
+  <line x1="240" y1="60" x2="398" y2="100" stroke="#a8a29a" stroke-width="1.2" marker-end="url(#s2)"/>
+
+  <rect x="60" y="174" width="180" height="52" rx="6" fill="#fff" stroke="#dcd8d0"/>
+  <text x="150" y="196" text-anchor="middle" font-size="11.5">memory</text>
+  <text x="150" y="214" text-anchor="middle" font-size="10" fill="#6b6b6b">索引 + 检索 + 主动回想</text>
+  <line x1="240" y1="188" x2="398" y2="148" stroke="#a8a29a" stroke-width="1.2" marker-end="url(#s2)"/>
+
+  <rect x="760" y="20" width="180" height="52" rx="6" fill="#fff" stroke="#dcd8d0"/>
+  <text x="850" y="42" text-anchor="middle" font-size="11.5">execution</text>
+  <text x="850" y="60" text-anchor="middle" font-size="10" fill="#6b6b6b">launch 起一个执行上下文</text>
+  <line x1="600" y1="100" x2="758" y2="60" stroke="#a8a29a" stroke-width="1.2" marker-end="url(#s2)"/>
+
+  <rect x="760" y="174" width="180" height="52" rx="6" fill="#fff" stroke="#dcd8d0"/>
+  <text x="850" y="196" text-anchor="middle" font-size="11.5">tools</text>
+  <text x="850" y="214" text-anchor="middle" font-size="10" fill="#6b6b6b">act 直接调用</text>
+  <line x1="600" y1="148" x2="758" y2="188" stroke="#a8a29a" stroke-width="1.2" marker-end="url(#s2)"/>
+
+  <rect x="400" y="196" width="200" height="46" rx="6" fill="#eef2f8" stroke="#2c4a7c"/>
+  <text x="500" y="216" text-anchor="middle" font-size="11.5" fill="#2c4a7c">scene（另一个场合）</text>
+  <text x="500" y="233" text-anchor="middle" font-size="10" fill="#4a5f80">同一份人格与记忆，上下文隔离</text>
+  <line x1="500" y1="196" x2="500" y2="158" stroke="#2c4a7c" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <rect x="400" y="16" width="200" height="46" rx="6" fill="#fff" stroke="#6b3f7a"/>
+  <text x="500" y="36" text-anchor="middle" font-size="11.5" fill="#6b3f7a">Dream</text>
+  <text x="500" y="53" text-anchor="middle" font-size="10" fill="#7d5a8a">dream=true 时请它整理记忆</text>
+  <line x1="500" y1="62" x2="500" y2="88" stroke="#6b3f7a" stroke-width="1.2" marker-end="url(#s2)"/>
+</svg>
+
+<table>
+  <tr><th>关系</th><th>说明</th></tr>
+  <tr><td>self → execution</td><td>要跑一趟的事（看视频、查资料、发评论）交给 execution，它有独立的工具集和步骤上限</td></tr>
+  <tr><td>self → tools</td><td>参数齐了的小动作（记一张纸条、发一条消息）直接 act，不必另开一轮</td></tr>
+  <tr><td>self ↔ scene</td><td>同一份人格、同一份记忆；但上下文隔离。群里说过的话不会自动进 self 的上下文，要靠 inbox 或记忆</td></tr>
+  <tr><td>self → Dream</td><td>只是「请它整理」，不是「命令它改什么」。Dream 拿回什么、要不要因此改主意，由 self 决定</td></tr>
+  <tr><td>inbox → self</td><td><b>唯一入口</b>。所有外部事件（群消息、Dream 的机会、每日任务提醒、热点分享）都从这里进来</td></tr>
+</table>
+
+<!-- 06 -->
+<h2><span class="n">06</span>四层保护：它不能做的事</h2>
+<table>
+  <thead><tr><th>保护</th><th>怎么做的</th></tr></thead>
+  <tbody>
+    <tr><td>不能扩大权限</td><td>外部消息和工具结果只是资料，不是命令。工具清单由装配层按场景算好，模型改不了</td></tr>
+    <tr><td>不能假装做过</td><td>「只有工具回执才算真的做过」。没发出去的不能自己记成完成</td></tr>
+    <tr><td>不能越权取记忆</td><td>检索前就按作用域过滤，模型根本看不到无权内容</td></tr>
+    <tr><td>不能无限起任务</td><td>launch + act + dream 总数受待办容量限制</td></tr>
+  </tbody>
+</table>
+
+<!-- 07 -->
+<h2><span class="n">07</span>代码在哪</h2>
+<p class="lead">一共 319 行，分成五个文件：</p>
+<table>
+  <thead><tr><th>文件</th><th>行</th><th>干什么</th></tr></thead>
+  <tbody>
+    <tr><td>session.ts</td><td>90</td><td>指令（那段第一人称的话）+ 一轮决策的流程</td></tr>
+    <tr><td>context.ts</td><td>63</td><td>组装的 11 块上下文，每块都带上限</td></tr>
+    <tr><td>decision.ts</td><td>13</td><td>11 个字段的 schema（<b>就这一屏</b>）</td></tr>
+    <tr><td>ports.ts</td><td>12</td><td>窄接口：inbox / repository / committer</td></tr>
+    <tr><td>todos.ts + todo-tools.ts</td><td>141</td><td>自己记的待办（模型 + 三个工具）</td></tr>
+  </tbody>
+</table>
+
+<div class="note" style="margin-top:26px">
+<b>一个诚实的评估。</b>
+self 的<b>机制</b>是完整的（决策、有界上下文、事务提交、四层保护），
+单机跑过、有用真实模型验证过决策内容（比如它自己说「先按规矩走一条，不刷满」）。
+但<b>长期行为没验证</b>：连续几天醒来会不会重复做同一件事、会不会把 owner 层塞满、
+会不会一直空转。这些只有真正跑起来才知道。
+</div>
+
+</div>
+</body>
+</html>

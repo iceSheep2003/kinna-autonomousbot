@@ -168,6 +168,11 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
   —— 从真实生成的库里 `sqlite3` dump 出来的表结构、数据行、查询计划
 - 设计取舍：[docs/memory-storage.md](docs/memory-storage.md)
 
+### self 的设计
+
+**[docs/self-design.html](docs/self-design.html)** · [PNG](docs/self-design.png)
+—— self 是什么、一次唤醒的流程、它能决定什么（11 个字段）、每轮看到什么、和周边模块的关系、四层保护。
+
 ### 记忆机制文档
 
 两份，分工不同：
