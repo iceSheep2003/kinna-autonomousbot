@@ -19,7 +19,16 @@ export interface QqState {
 }
 export interface MediaBytes { bytes: Uint8Array; mimeType: string }
 export interface QqMediaSource { acquire(ref: MediaRef, signal: AbortSignal): Promise<MediaBytes> }
-export interface QqPerception { inspect(media: MediaBytes, question: string, signal: AbortSignal): Promise<string> }
+export interface QqPerception {
+  inspect(media: MediaBytes, question: string, signal: AbortSignal): Promise<string>;
+  /**
+   * 这个实现到底能不能看图/听音。
+   *
+   * 必须能问，否则「没配置能力」和「这次识别失败」会混成同一句话，
+   * 模型无从判断是「要再试一次」还是「这件事它根本做不到」。
+   */
+  capabilities?(): { image: boolean; audio: boolean };
+}
 export interface QqSpeech { synthesize(text: string, style: string, signal: AbortSignal): Promise<string> }
 export interface QqMemeSource { tags(): string[]; pick(tag: string): Promise<string> }
 /** 一次频道 API 调用；query 只允许字符串键值。 */

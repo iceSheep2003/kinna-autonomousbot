@@ -56,6 +56,7 @@ function clip(summary: string): string {
 export async function describeImage(ref: MediaRef, deps: PerceiveDeps, question = DEFAULT_IMAGE_QUESTION): Promise<string> {
   const cached = deps.cache?.get(ref.id);
   if (cached !== undefined) return cached;
+  if (deps.perception.capabilities?.().image === false) return '[图片：当前没有配置图片识别能力，看不到内容]';
   try {
     const signal = deps.signal === undefined
       ? AbortSignal.timeout(PERCEIVE_LIMITS.timeoutMs)
@@ -81,6 +82,10 @@ export async function describeImage(ref: MediaRef, deps: PerceiveDeps, question 
 export async function transcribeVoice(ref: MediaRef, deps: PerceiveDeps): Promise<string> {
   const cached = deps.cache?.get(ref.id);
   if (cached !== undefined) return cached;
+  // 先说清「做不到」还是「这次失败」：前者再试也没用，后者可以重试。
+  // 实测 DeepSeek 的文件类型只收图片（webp/png/jpeg/gif）、没有转写端点，
+  // 所以默认部署里语音就是听不到的——不能假装听见了。
+  if (deps.perception.capabilities?.().audio === false) return '[语音：当前没有配置语音转写能力，听不到内容]';
   try {
     const signal = deps.signal === undefined
       ? AbortSignal.timeout(PERCEIVE_LIMITS.timeoutMs)

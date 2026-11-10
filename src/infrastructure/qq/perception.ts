@@ -2,6 +2,16 @@ import type { MediaBytes, QqPerception } from '../../integrations/qq/ports.js';
 /** 在能力调用时按需理解，不把多模态处理塞进 self 或 QQ 事件入口。 */
 export class OpenAiQqPerception implements QqPerception {
   constructor(private readonly config: { baseUrl: string; apiKey: string; visionModel?: string; audioModel?: string }) {}
+  /**
+   * 能力来自配置：没填 visionModel 就是看不了图，没填 audioModel 就是听不了音。
+   *
+   * 这条查询很重要——默认部署里两个都没填，`describe`/`transcribe` 会直接抛错。
+   * 有了它，调用方可以说「没有这个能力」而不是笼统的「识别失败」。
+   */
+  capabilities(): { image: boolean; audio: boolean } {
+    return { image: Boolean(this.config.visionModel), audio: Boolean(this.config.audioModel) };
+  }
+
   async inspect(media: MediaBytes, question: string, signal: AbortSignal): Promise<string> {
     return media.mimeType.startsWith('image/') ? this.describe(media, question, signal) : this.transcribe(media, signal);
   }

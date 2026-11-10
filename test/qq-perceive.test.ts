@@ -6,10 +6,13 @@ import type { MediaRef } from '../src/integrations/qq/types.js';
 const ref = (id: string): MediaRef => ({ id, kind: 'image', scope: { type: 'group', id: '123' }, eventId: 'e', url: `https://x/${id}.jpg` });
 const bytes = { bytes: new Uint8Array([1]), mimeType: 'image/jpeg' };
 
-function deps(overrides: { summary?: string; fail?: boolean; cache?: Map<string, string>; seen?: string[] } = {}) {
+function deps(overrides: { summary?: string; fail?: boolean; cache?: Map<string, string>; seen?: string[]; caps?: { image: boolean; audio: boolean } } = {}) {
   return {
     media: { async acquire(r: MediaRef) { if (overrides.fail) throw new Error('下载失败'); overrides.seen?.push(r.id); return bytes; } },
-    perception: { async inspect() { if (overrides.fail) throw new Error('模型不可用'); return overrides.summary ?? '一只猫趴在键盘上'; } },
+    perception: {
+      async inspect() { if (overrides.fail) throw new Error('模型不可用'); return overrides.summary ?? '一只猫趴在键盘上'; },
+      capabilities: () => overrides.caps ?? { image: true, audio: true },
+    },
     ...(overrides.cache === undefined ? {} : { cache: { get: (id: string) => overrides.cache!.get(id), put: (id: string, s: string) => { overrides.cache!.set(id, s); } } }),
   };
 }
@@ -83,4 +86,15 @@ test('默认提问会要求读出图里的关键信息，而不是只说「这�
   });
   assert.match(out, /基础30讲/);
   assert.match(out, /27年1月/, '群聊发图多半是分享信息，书名和日期才是重点');
+});
+
+test('没配置图片识别能力时说「没有这个能力」，而不是「识别失败」', async () => {
+  const out = await describeImage(ref('a'), deps({ caps: { image: false, audio: false } }));
+  assert.match(out, /没有配置图片识别能力/);
+  assert.doesNotMatch(out, /未能识别/, '没能力 ≠ 这次失败，再试也没用');
+});
+
+test('没配置语音转写能力时明确说听不到——DeepSeek 的 file 只收图片、没有转写端点', async () => {
+  const out = await describeImagesIn('[语音]', [{ ...ref('v'), kind: 'audio' }], deps({ caps: { image: true, audio: false } }));
+  assert.match(out, /没有配置语音转写能力，听不到内容/);
 });
