@@ -152,10 +152,14 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
 拿这些关键词用 `bilibili.search` 去找；`bilibili.discover`（推荐/热门/排行）只用来补充，
 实在想不起来时才退回推荐。工具描述里也写明了「不要用泛泛的词（比如『视频』『好看』）」。
 
-### 记忆机制总图
+### 记忆机制文档
 
-一张图讲清整套机制（一条记忆怎么进库、Dream 夜里怎么重构、下次醒来怎么被想起来）：
-**[docs/memory-map.html](docs/memory-map.html)** · [PNG 版](docs/memory-map.png)
+两份，分工不同：
+
+| 文档 | 讲什么 | 适合 |
+| --- | --- | --- |
+| **[memory-design.html](docs/memory-design.html)** · [PNG](docs/memory-design.png) | **总体设计 + 四层产物的真实形状**：经验流水 / 记忆 / 索引 / 场景现场，每层给出完整 JSON 和「每个字段在挡什么错误」 | 想搞清楚这套东西到底存了什么 |
+| **[memory-map.html](docs/memory-map.html)** · [PNG](docs/memory-map.png) | **流程图**：一条记忆的一生、分层规则、Dream 四项、读取链路 | 想知道数据怎么流动 |
 
 ### 记忆分层
 

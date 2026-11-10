@@ -1,7 +1,8 @@
 # 记忆分层设计
 
-> 一张总图（含全景、分层、Dream 四项工作、读取链路、文件地图）：[docs/memory-map.html](./docs/memory-map.html)
-> 本文是文字版的设计与取舍记录，图和文可以对照看。
+> - **设计与产物（先看这个）**：[docs/memory-design.html](./docs/memory-design.html) —— 四层产物各是什么形状、每个字段在挡什么错误
+> - **流程图**：[docs/memory-map.html](./docs/memory-map.html) —— 数据怎么流动
+> - 本文是文字版的设计与取舍记录，可与上面两份对照看。
 
 ## 要解决的问题
 

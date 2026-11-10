@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记忆机制：设计与产物</title>
+<style>
+  :root {
+    --ink:#1a1a1a; --muted:#6b6b6b; --line:#dcd8d0; --bg:#faf8f4; --card:#fff;
+    --flow:#7a6a52; --mem:#2f6f4f; --idx:#2c4a7c; --scene:#6b3f7a; --warn:#8a6a1f;
+    --str:#a33; --num:#2a6a8a; --key:#5a4a7a; --cmt:#8a8578;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:48px 32px 90px;background:var(--bg);color:var(--ink);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Helvetica Neue",sans-serif}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 8px;font-size:14px}
+  h2{font-size:18px;margin:56px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h2 .n{color:var(--muted);font-weight:400;margin-right:10px;font-variant-numeric:tabular-nums}
+  h3{font-size:14.5px;margin:26px 0 10px}
+  .lead{color:var(--muted);font-size:14px;margin:8px 0 20px}
+  code{background:#f0ede7;padding:1px 5px;border-radius:3px;font-size:13px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  pre{margin:0;padding:16px 18px;background:#fbfaf7;border:1px solid var(--line);border-radius:6px;
+    overflow-x:auto;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+  pre .k{color:var(--key)} pre .s{color:var(--str)} pre .n2{color:var(--num)}
+  pre .b{color:#7a5c2a} pre .null{color:#a8a294} pre .c{color:var(--cmt);font-style:italic}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;background:#f5f2ec}
+  td:first-child{white-space:nowrap;font-family:ui-monospace,monospace;font-size:12.5px}
+  tbody tr:last-child td{border-bottom:none}
+  .note{background:#fdf6e8;border-left:3px solid #c99a3f;padding:12px 16px;font-size:13.5px;
+    margin:18px 0;border-radius:0 4px 4px 0}
+  .note b{color:#6b5218}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;margin-left:8px;
+    vertical-align:2px;font-weight:500}
+  .t-flow{background:#f2ece2;color:#7a6a52}
+  .t-mem{background:#e7f2eb;color:#2f6f4f}
+  .t-idx{background:#e9eef7;color:#2c4a7c}
+  .t-scene{background:#f2e9f5;color:#6b3f7a}
+  .svgbox{margin:18px 0 6px}
+  svg{display:block;width:100%;height:auto}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:2px 16px;font-size:13px;margin-top:10px}
+  .kv dt{font-family:ui-monospace,monospace;font-size:12.5px;color:var(--mem);padding-top:2px}
+  .kv dd{margin:0;color:var(--muted);padding-bottom:8px}
+  ul{margin:8px 0 0;padding-left:20px;font-size:13.5px;color:var(--muted)}
+  li{margin-bottom:6px}
+  li b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>记忆机制：设计与产物</h1>
+<p class="sub">不讲流程，先讲清楚<b>每层沉淀下来的东西到底是什么样</b>，再讲它们怎么产生、怎么用。</p>
+
+<!-- ================= 00 总体设计 ================= -->
+<h2><span class="n">00</span>总体设计</h2>
+
+<h3>要解决的问题只有一句</h3>
+<p class="lead" style="color:var(--ink);font-size:15px">
+<b>下次醒来，怎么在有限的上下文里，用一个不像失忆的人的方式，接上上次的事。</b>
+</p>
+<p class="lead">
+「有限上下文」是硬约束——不可能把所有历史都塞进去。「接上」是目标——不是查询，是能自然地接着说话、接着做事。
+两者冲突，就产生了分层：<b>越靠上层越精简、越常驻；越靠下层越具体、越按需。</b>
+</p>
+
+<h3>四层产物，粒度递减、数量递减</h3>
+
+<svg class="svgbox" viewBox="0 0 1000 250" role="img" aria-label="四层产物">
+  <defs><marker id="fa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#b3ada2"/></marker></defs>
+
+  <rect x="20" y="20" width="960" height="42" rx="5" fill="#f6f2ea" stroke="#c9c2b6"/>
+  <text x="36" y="40" font-size="12.5" fill="#7a6a52" font-weight="600">① 经验流水</text>
+  <text x="36" y="56" font-size="11" fill="#8a8578">append-only，原话照抄</text>
+  <text x="964" y="47" text-anchor="end" font-size="11.5" fill="#7a6a52">成千上万条 · 只追加不改</text>
+
+  <line x1="500" y1="62" x2="500" y2="76" stroke="#b3ada2" stroke-width="1.2" marker-end="url(#fa)"/>
+  <text x="510" y="74" font-size="10.5" fill="#8a8578">提炼（判断哪些值得记）</text>
+
+  <rect x="20" y="78" width="960" height="42" rx="5" fill="#e9f2ec" stroke="#2f6f4f"/>
+  <text x="36" y="98" font-size="12.5" fill="#2f6f4f" font-weight="600">② 记忆</text>
+  <text x="36" y="114" font-size="11" fill="#4f7d63">一条一件事实，带证据链</text>
+  <text x="964" y="105" text-anchor="end" font-size="11.5" fill="#2f6f4f">几百条 · 可改可合并可归档</text>
+
+  <line x1="500" y1="120" x2="500" y2="134" stroke="#b3ada2" stroke-width="1.2" marker-end="url(#fa)"/>
+  <text x="510" y="132" font-size="10.5" fill="#8a8578">归类（判断怎么组织）</text>
+
+  <rect x="20" y="136" width="960" height="42" rx="5" fill="#e9eef7" stroke="#2c4a7c"/>
+  <text x="36" y="156" font-size="12.5" fill="#2c4a7c" font-weight="600">③ 索引</text>
+  <text x="36" y="172" font-size="11" fill="#4a5f80">每个作用域一份目录</text>
+  <text x="964" y="163" text-anchor="end" font-size="11.5" fill="#2c4a7c">≤40 条 · 每次注入都带上</text>
+
+  <line x1="500" y1="178" x2="500" y2="192" stroke="#b3ada2" stroke-width="1.2" marker-end="url(#fa)"/>
+  <text x="510" y="190" font-size="10.5" fill="#8a8578">压缩（对话层面的连续性）</text>
+
+  <rect x="20" y="194" width="960" height="42" rx="5" fill="#f2e9f5" stroke="#6b3f7a"/>
+  <text x="36" y="214" font-size="12.5" fill="#6b3f7a" font-weight="600">④ 场景现场</text>
+  <text x="36" y="230" font-size="11" fill="#7d5a8a">窗口外旧对话的状态</text>
+  <text x="964" y="221" text-anchor="end" font-size="11.5" fill="#6b3f7a">每个场景一份 · 覆盖式更新</text>
+</svg>
+
+<div class="note">
+<b>为什么是四层而不是一层。</b>一层的话只能二选一：要么全量塞进去（上下文爆），要么只留摘要（细节没了）。
+四层的做法是——<b>摘要常驻，细节留档</b>：索引告诉你「有这件事」，一条代码指向具体记忆；真要用时再展开。
+这正是 Claude 的 <code>MEMORY.md</code> 干的事，只是这里按作用域分成了多份。
+</div>
+
+<!-- ================= 01 经验流水 ================= -->
+<h2><span class="n">01</span>产物一：经验流水<span class="tag t-flow">append-only</span></h2>
+<p class="lead">原材料。发生什么就照抄什么，<b>不做任何判断</b>——判断留到提炼阶段，这样写路径不会被模型耗时卡住。</p>
+
+<pre>{
+  <span class="k">"seq"</span>: <span class="n2">4821</span>,                       <span class="c">// 单调递增，游标靠它推进</span>
+  <span class="k">"source"</span>: <span class="s">"session:group-330707267"</span>,  <span class="c">// 来自哪个场景</span>
+  <span class="k">"kind"</span>: <span class="s">"message"</span>,              <span class="c">// message / tool_result / note / dream …</span>
+  <span class="k">"data"</span>: {
+    <span class="k">"nickname"</span>: <span class="s">"某群友"</span>,
+    <span class="k">"text"</span>: <span class="s">"华师那个保研项目是校企合作，成果要挂企业名"</span>,
+    <span class="k">"userId"</span>: <span class="s">"1602…"</span>
+  },
+  <span class="k">"at"</span>: <span class="n2">1790339103000</span>
+}</pre>
+
+<div class="kv">
+  <dt>按 seq 读</dt><dd>每个消费者（self / scene / dream）记自己的游标，从上次的位置继续</dd>
+  <dt>只追加</dt><dd>不改不删。所以「我当时原话是什么」永远查得到，是后面所有证据链的根</dd>
+  <dt>没有重要性</dt><dd>这里不判断值不值得记。判断在下一层，可以有模型参与——写路径不能等模型</dd>
+</div>
+
+<!-- ================= 02 记忆 ================= -->
+<h2><span class="n">02</span>产物二：记忆<span class="tag t-mem">提炼后的判断</span></h2>
+<p class="lead">这是核心产物。一条记忆 = <b>一件被确认的事实</b> + <b>它凭什么成立</b> + <b>它属于哪个场合</b>。</p>
+
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"mem-7f3a"</span>,
+  <span class="k">"content"</span>: <span class="s">"他最终选了华师保研，但担心校企合作项目的就业风险"</span>,   <span class="c">// ← 只有这一句会进上下文</span>
+
+  <span class="k">"scope"</span>: <span class="s">"group:330707267"</span>,     <span class="c">// 只在这个群成立</span>
+  <span class="k">"subjectUserId"</span>: <span class="s">"1602…"</span>,      <span class="c">// 这条事实关于谁</span>
+  <span class="k">"visibility"</span>: <span class="s">"personal"</span>,      <span class="c">// 谁能看：personal 只给本人相关场景</span>
+
+  <span class="k">"evidence"</span>: [<span class="n2">4817</span>, <span class="n2">4821</span>],          <span class="c">// 指向经验流水的 seq —— 凭这两句原话</span>
+  <span class="k">"kind"</span>: <span class="s">"observation"</span>,           <span class="c">// observation 看到 / inference 推断 / strategy 策略</span>
+  <span class="k">"factType"</span>: <span class="s">"fact"</span>,              <span class="c">// fact / preference / boundary / event / open_loop …</span>
+  <span class="k">"confidence"</span>: <span class="n2">0.82</span>,              <span class="c">// 有多确定</span>
+  <span class="k">"importance"</span>: <span class="n2">4</span>,                 <span class="c">// 对理解这个人有多关键（0-5）</span>
+
+  <span class="k">"status"</span>: <span class="s">"active"</span>,             <span class="c">// active / candidate / archived / superseded</span>
+  <span class="k">"revision"</span>: <span class="n2">3</span>,                    <span class="c">// 改过几版；旧版单独留档</span>
+  <span class="k">"mergedInto"</span>: <span class="null">null</span>,                <span class="c">// 被压缩进哪一条</span>
+
+  <span class="k">"createdAt"</span>: <span class="n2">1790339103000</span>,
+  <span class="k">"lastAccessedAt"</span>: <span class="n2">1791465183000</span>, <span class="c">// 上次被想起来 —— 归档靠它判断冷没冷</span>
+  <span class="k">"accessCount"</span>: <span class="n2">3</span>,                 <span class="c">// 常用说明还有用，不归档</span>
+  <span class="k">"expiresAt"</span>: <span class="null">null</span>,                 <span class="c">// 有时间性的事实才填</span>
+  <span class="k">"mentionPolicy"</span>: <span class="s">"soft_echo"</span>      <span class="c">// 能不能主动提：direct / soft_echo / tone_only / avoid</span>
+}</pre>
+
+<h3>这些字段不是随便加的，每个都在挡一种具体的错误</h3>
+<table>
+  <thead><tr><th>字段</th><th>挡住的错误</th></tr></thead>
+  <tbody>
+    <tr><td>evidence</td><td>模型编造一件事。每条都必须能指回原话，否则 Dream 回放时无法核对</td></tr>
+    <tr><td>scope</td><td>在 A 群听到的事跑到 B 群说漏。过滤在检索前，模型根本看不到无权内容</td></tr>
+    <tr><td>visibility + subjectUserId</td><td>把别人的私事带进不属于它的会话。「事实关于谁」和「谁能看」是两件事，不能混用</td></tr>
+    <tr><td>confidence</td><td>把「他可能喜欢」当成「他喜欢」。低置信度的需要更多证据</td></tr>
+    <tr><td>status</td><td>已撤回的事还挂在上下文里。candidate 是还没确认的，不默认注入</td></tr>
+    <tr><td>revision + mergedInto</td><td>改过之后丢了原版。旧版单独留档，能追「当时是怎么说的」</td></tr>
+    <tr><td>lastAccessedAt + accessCount</td><td>记忆只增不减。这两个是归档的唯一依据，让遗忘有据可依</td></tr>
+    <tr><td>mentionPolicy</td><td>该记但绝不能主动提的事（别人的隐私）。记着，但只用作背景判断</td></tr>
+  </tbody>
+</table>
+
+<!-- ================= 03 索引 ================= -->
+<h2><span class="n">03</span>产物三：索引<span class="tag t-idx">目录，常驻</span></h2>
+<p class="lead">记忆是「存着什么」，索引是「<b>知道自己存着什么</b>」。每次注入都带上它，细节靠 <code>memory.expand</code> 按需取。</p>
+
+<pre>{
+  <span class="k">"scope"</span>: <span class="s">"group:330707267"</span>,   <span class="c">// 每个作用域一份，owner / group:xxx / feature:xxx</span>
+  <span class="k">"version"</span>: <span class="n2">12</span>,                   <span class="c">// 每次重建 +1</span>
+  <span class="k">"updatedAt"</span>: <span class="n2">1794288000000</span>,
+  <span class="k">"entries"</span>: [
+    {
+      <span class="k">"topic"</span>: <span class="s">"择校与保研"</span>,
+      <span class="k">"summary"</span>: <span class="s">"纠结华师/深大/杭电，最终选华师保研，担心校企合作就业风险"</span>,   <span class="c">// ≤60 字</span>
+      <span class="k">"memoryIds"</span>: [<span class="s">"mem-7f3a"</span>, <span class="s">"mem-8b21"</span>, <span class="s">"mem-9c04"</span>],  <span class="c">// 展开时取这些</span>
+      <span class="k">"weight"</span>: <span class="n2">5</span>                    <span class="c">// 超预算时先丢权重低的</span>
+    },
+    {
+      <span class="k">"topic"</span>: <span class="s">"408 备考"</span>,
+      <span class="k">"summary"</span>: <span class="s">"目标 110-120，真题刷多遍，关注模拟卷与时间分配"</span>,
+      <span class="k">"memoryIds"</span>: [<span class="s">"mem-1a2b"</span>, <span class="s">"mem-3c4d"</span>],
+      <span class="k">"weight"</span>: <span class="n2">4</span>
+    }
+  ]
+}</pre>
+
+<h3>三条硬约束（和 Claude 对齐）</h3>
+<ul>
+  <li><b>≤40 条、≤4000 字符</b>。索引是常驻的，不能变成第二份全量记忆。超了按 weight 丢行——丢的只是索引行，记忆本身还在，仍可搜索。</li>
+  <li><b>每条必须指向真实记忆</b>。<code>pruneDangling</code> 会丢掉指向空处的条目：一条指向空处的索引比没有更糟，模型会以为自己记得那件事。</li>
+  <li><b>全量替换，不是增量</b>。索引的价值就在于是「当前全景」；增量改几次之后会变成历史补丁的拼接，谁也不清楚里面还有效的有多少。</li>
+</ul>
+
+<div class="note">
+<b>实测：</b>线上 275 条真实记忆 → 20 条索引、1798 字符。主题划分和摘要都准确
+（「择校与华师保研」「牢e bot 运维」「408 备考与策略」）。按场景分开后，两个群的索引完全不串。
+</div>
+
+<!-- ================= 04 场景现场 ================= -->
+<h2><span class="n">04</span>产物四：场景现场<span class="tag t-scene">对话连续性</span></h2>
+<p class="lead">前三层管「记得什么」，这一层管「<b>刚才聊到哪</b>」。场景每次只读最近 20 条经验，更早的如果没有它就直接丢了。</p>
+
+<pre>{
+  <span class="k">"sceneSummary"</span>: <span class="s">"从模拟卷质量吐槽转到「雨姐」身份确认，又跳到实习风口"</span>,
+
+  <span class="k">"activeThreads"</span>: [                        <span class="c">// 还在继续的话题</span>
+    { <span class="k">"summary"</span>: <span class="s">"吐槽各机构模拟卷互相抄真题"</span>, <span class="k">"participants"</span>: [<span class="s">"ace"</span>, <span class="s">"Moretti"</span>] }
+  ],
+  <span class="k">"openLoops"</span>: [                            <span class="c">// 还没接住的话 —— 这一栏最有价值</span>
+    { <span class="k">"summary"</span>: <span class="s">"「我嫌弃她有点笨」指谁没说明"</span>, <span class="k">"owner"</span>: <span class="s">"牢e"</span> },
+    { <span class="k">"summary"</span>: <span class="s">"「不是说26很简单嘛」没人接"</span> }
+  ],
+  <span class="k">"participantStances"</span>: [                  <span class="c">// 谁明确表过什么态（不推测）</span>
+    { <span class="k">"participant"</span>: <span class="s">"牢e"</span>, <span class="k">"topic"</span>: <span class="s">"实习"</span>, <span class="k">"stance"</span>: <span class="s">"风口变化快，不太对劲"</span> }
+  ],
+  <span class="k">"callbacks"</span>: [                            <span class="c">// 可以接回的梗，带时效</span>
+    { <span class="k">"summary"</span>: <span class="s">"雨姐=东北御姐"</span>, <span class="k">"ttlTurns"</span>: <span class="n2">15</span> }
+  ],
+  <span class="k">"botContinuity"</span>: {                        <span class="c">// 只记我真的说过的，不推测</span>
+    <span class="k">"recentStatements"</span>: [<span class="s">"名字记下了，主人这头衔谁批的呀"</span>],
+    <span class="k">"commitments"</span>: [],
+    <span class="k">"stances"</span>: []
+  },
+  <span class="k">"corrections"</span>: [<span class="s">"他说 26 英一不难，之前记反了"</span>]  <span class="c">// 纠正优先于旧说法</span>
+}</pre>
+
+<h3>三条边界</h3>
+<ul>
+  <li><b>只保留影响接话的内容</b>。人物档案、知识事实属于记忆层，不属于现场。写多了就把现场变成第二份记忆。</li>
+  <li><b>删掉已结束的</b>。被回答的、撤回的、被后文否定的，不再挂着。</li>
+  <li><b>分清谁说的</b>。<code>botContinuity</code> 只记原文里真的说过的——群友的提议不能变成我答应过的事。</li>
+</ul>
+
+<!-- ================= 05 怎么产生 ================= -->
+<h2><span class="n">05</span>这些产物怎么产生</h2>
+
+<svg class="svgbox" viewBox="0 0 1000 190" role="img" aria-label="写入路径">
+  <defs><marker id="ba" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#b3ada2"/></marker></defs>
+
+  <rect x="20" y="40" width="140" height="76" rx="6" fill="#fff" stroke="#dcd8d0"/>
+  <text x="90" y="66" text-anchor="middle" font-size="12.5">消息进来</text>
+  <text x="90" y="86" text-anchor="middle" font-size="10.5" fill="#6b6b6b">不等模型</text>
+  <text x="90" y="102" text-anchor="middle" font-size="10.5" fill="#6b6b6b">直接追加</text>
+
+  <line x1="160" y1="78" x2="188" y2="78" stroke="#b3ada2" stroke-width="1.2" marker-end="url(#ba)"/>
+
+  <rect x="190" y="40" width="150" height="76" rx="6" fill="#f6f2ea" stroke="#c9c2b6"/>
+  <text x="265" y="64" text-anchor="middle" font-size="12" fill="#7a6a52" font-weight="600">经验流水</text>
+  <text x="265" y="84" text-anchor="middle" font-size="10.5" fill="#8a8578">原话照抄</text>
+  <text x="265" y="100" text-anchor="middle" font-size="10.5" fill="#8a8578">只追加</text>
+
+  <line x1="340" y1="78" x2="368" y2="78" stroke="#b3ada2" stroke-width="1.2" marker-end="url(#ba)"/>
+  <text x="354" y="68" text-anchor="middle" font-size="9.5" fill="#8a8578">夜里</text>
+
+  <rect x="370" y="30" width="180" height="96" rx="6" fill="#e9f2ec" stroke="#2f6f4f"/>
+  <text x="460" y="54" text-anchor="middle" font-size="12" fill="#2f6f4f" font-weight="600">Dream 提炼</text>
+  <text x="460" y="74" text-anchor="middle" font-size="10.5" fill="#4f7d63">去重 · 矛盾检测</text>
+  <text x="460" y="90" text-anchor="middle" font-size="10.5" fill="#4f7d63">定 scope / 置信度</text>
+  <text x="460" y="106" text-anchor="middle" font-size="10.5" fill="#4f7d63">留证据链</text>
+
+  <line x1="550" y1="78" x2="578" y2="78" stroke="#b3ada2" stroke-width="1.2" marker-end="url(#ba)"/>
+
+  <rect x="580" y="40" width="150" height="76" rx="6" fill="#e9f2ec" stroke="#2f6f4f"/>
+  <text x="655" y="64" text-anchor="middle" font-size="12" fill="#2f6f4f" font-weight="600">记忆</text>
+  <text x="655" y="84" text-anchor="middle" font-size="10.5" fill="#4f7d63">可改可合并</text>
+  <text x="655" y="100" text-anchor="middle" font-size="10.5" fill="#4f7d63">可归档</text>
+
+  <line x1="730" y1="78" x2="758" y2="78" stroke="#b3ada2" stroke-width="1.2" marker-end="url(#ba)"/>
+
+  <rect x="760" y="40" width="210" height="76" rx="6" fill="#e9eef7" stroke="#2c4a7c"/>
+  <text x="865" y="64" text-anchor="middle" font-size="12" fill="#2c4a7c" font-weight="600">索引（同一次 Dream 里生成）</text>
+  <text x="865" y="84" text-anchor="middle" font-size="10.5" fill="#4a5f80">它已经看到了全部记忆</text>
+  <text x="865" y="100" text-anchor="middle" font-size="10.5" fill="#4a5f80">顺手分组最省</text>
+
+  <text x="20" y="158" font-size="12" fill="#6b6b6b">写入和提炼<b>刻意分开</b>：写路径不能等模型（会卡住对话），提炼可以慢（夜里批量做）。</text>
+  <text x="20" y="178" font-size="12" fill="#6b6b6b">这也是「经验流水」存在的理由——它是缓冲，让两件事不需要同时发生。</text>
+</svg>
+
+<!-- ================= 06 怎么使用 ================= -->
+<h2><span class="n">06</span>这些产物怎么被使用</h2>
+
+<pre><span class="c">// 一次注入，模型实际收到的三块内容（按顺序）</span>
+
+① 索引（常驻，两份）
+   ## 我记得的事                    ← owner 那份
+   - [偏好] 他喜欢别人叫全名（展开: mem-1a2b）
+   - [长期目标] 明年考 408（展开: mem-3c4d）
+
+   ## 在这处我记得的事               ← 当前场景那份
+   - [择校] 最终选华师保研，担心就业风险（展开: mem-7f3a, mem-8b21）
+
+② 检索到的具体记忆（分池）
+   general（通用层 ~40%）  2 条
+   scoped（当前场景 ~60%） 3 条
+
+③ 场景现场（只有群聊场景有）
+   这段对话之前聊到（不是这一轮的原文，是背景）
+   - 还没接住：「我嫌弃她有点笨」指谁没说明
+
+<span class="c">// 需要细节时</span>
+memory.expand(["mem-7f3a", "mem-8b21"])  → 取全文
+memory.search("华师 保研")                → 主动回想，连归档的一起翻</pre>
+
+<h3>四次过滤，都在检索之前</h3>
+<table>
+  <thead><tr><th>过滤</th><th>挡掉什么</th><th>为什么必须在检索前</th></tr></thead>
+  <tbody>
+    <tr><td>作用域</td><td>别的场景的记忆</td><td>先召回再让模型「忽略」是自欺：模型一不听话就泄露了。过滤在候选池阶段完成，模型根本看不到</td></tr>
+    <tr><td>状态</td><td>已撤回 / 已归档 / 过期 / 候选池</td><td>归档的默认不进来，但主动回想时可以（可逆）</td></tr>
+    <tr><td>分池</td><td>一层挤掉另一层</td><td>只按分数排，更「贴题」的场景记忆会把通用偏好挤光，模型就永远学不到「这个人说话喜欢怎样」</td></tr>
+    <tr><td>预算</td><td>超长条目</td><td><b>整条跳过，不截半句</b>——截断的前半句最容易被当成完整事实</td></tr>
+  </tbody>
+</table>
+
+<!-- ================= 07 Dream ================= -->
+<h2><span class="n">07</span>Dream：四个重构动作</h2>
+<p class="lead">前面所有产物都可能在 Dream 这里被改写。这是整套机制唯一「重构」的地方。</p>
+
+<svg class="svgbox" viewBox="0 0 1000 300" role="img" aria-label="Dream 四项">
+  <defs><marker id="da" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#2c4a7c"/></marker></defs>
+  <rect x="400" y="10" width="200" height="46" rx="6" fill="#2c4a7c"/>
+  <text x="500" y="30" text-anchor="middle" font-size="12.5" fill="#fff" font-weight="600">回放 N 遍</text>
+  <text x="500" y="47" text-anchor="middle" font-size="10.5" fill="#b9c9e0">每遍看到上一遍结果，自我修正</text>
+  <line x1="500" y1="56" x2="500" y2="72" stroke="#2c4a7c" stroke-width="1.4"/>
+  <line x1="110" y1="72" x2="890" y2="72" stroke="#2c4a7c" stroke-width="1.4"/>
+  <line x1="110" y1="72" x2="110" y2="86" stroke="#2c4a7c" stroke-width="1.4" marker-end="url(#da)"/>
+  <line x1="370" y1="72" x2="370" y2="86" stroke="#2c4a7c" stroke-width="1.4" marker-end="url(#da)"/>
+  <line x1="630" y1="72" x2="630" y2="86" stroke="#2c4a7c" stroke-width="1.4" marker-end="url(#da)"/>
+  <line x1="890" y1="72" x2="890" y2="86" stroke="#2c4a7c" stroke-width="1.4" marker-end="url(#da)"/>
+
+  <rect x="20" y="88" width="180" height="120" rx="6" fill="#fff" stroke="#2f6f4f"/>
+  <text x="110" y="110" text-anchor="middle" font-size="12.5" fill="#2f6f4f" font-weight="600">① 提升</text>
+  <text x="110" y="132" text-anchor="middle" font-size="10.5" fill="#6b6b6b">场景记忆 → owner</text>
+  <text x="110" y="152" text-anchor="middle" font-size="10" fill="#6b6b6b">稳定偏好 → 提</text>
+  <text x="110" y="168" text-anchor="middle" font-size="10" fill="#6b6b6b">一次性安排 → 不提</text>
+  <text x="110" y="190" text-anchor="middle" font-size="10" fill="#2f6f4f">复制，原记录保留</text>
+
+  <rect x="280" y="88" width="180" height="120" rx="6" fill="#fff" stroke="#6b3f7a"/>
+  <text x="370" y="110" text-anchor="middle" font-size="12.5" fill="#6b3f7a" font-weight="600">② 压缩</text>
+  <text x="370" y="132" text-anchor="middle" font-size="10.5" fill="#6b6b6b">同一件事的多条</text>
+  <text x="370" y="152" text-anchor="middle" font-size="10" fill="#6b6b6b">模型找组 + 措辞</text>
+  <text x="370" y="168" text-anchor="middle" font-size="10" fill="#6b6b6b">代码取证据并集</text>
+  <text x="370" y="190" text-anchor="middle" font-size="10" fill="#6b3f7a">原记录标 superseded</text>
+
+  <rect x="540" y="88" width="180" height="120" rx="6" fill="#fff" stroke="#2c4a7c"/>
+  <text x="630" y="110" text-anchor="middle" font-size="12.5" fill="#2c4a7c" font-weight="600">③ 重建索引</text>
+  <text x="630" y="132" text-anchor="middle" font-size="10.5" fill="#6b6b6b">每个作用域一份</text>
+  <text x="630" y="152" text-anchor="middle" font-size="10" fill="#6b6b6b">全量替换</text>
+  <text x="630" y="168" text-anchor="middle" font-size="10" fill="#6b6b6b">悬挂引用丢弃</text>
+  <text x="630" y="190" text-anchor="middle" font-size="10" fill="#2c4a7c">一次生成多份</text>
+
+  <rect x="800" y="88" width="180" height="120" rx="6" fill="#fff" stroke="#8a5a2b"/>
+  <text x="890" y="110" text-anchor="middle" font-size="12.5" fill="#8a5a2b" font-weight="600">④ 归档</text>
+  <text x="890" y="132" text-anchor="middle" font-size="10.5" fill="#6b6b6b">冷 60 天 + 不重要</text>
+  <text x="890" y="152" text-anchor="middle" font-size="10" fill="#6b6b6b">通用层不收</text>
+  <text x="890" y="168" text-anchor="middle" font-size="10" fill="#6b6b6b">常用的不收</text>
+  <text x="890" y="190" text-anchor="middle" font-size="10" fill="#8a5a2b">想起来就恢复</text>
+
+  <rect x="20" y="226" width="960" height="62" rx="6" fill="#fdf6e8" stroke="#c99a3f"/>
+  <text x="38" y="248" font-size="12.5" fill="#8a6a1f" font-weight="600">四项共同原则：模型负责判断，代码负责语义</text>
+  <text x="38" y="270" font-size="11.5" fill="#8a6a1f">模型说「这该通用 / 这俩是一件事 / 这么归类」；代码管「证据取并集、重要度取最大、原记录怎么标记、上限多少、悬挂引用丢弃」。</text>
+</svg>
+
+<!-- ================= 08 设计取舍 ================= -->
+<h2><span class="n">08</span>五个关键取舍</h2>
+<table>
+  <thead><tr><th>取舍</th><th>选了</th><th>为什么，代价是什么</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>隔离 vs 共享</td><td>分层（owner 共享 / 场景隔离）</td>
+      <td>线上原版是跨群绝不可见，代价是同一个人换群就变陌生人。分层要求多维护一层「什么该放 owner」的判断</td>
+    </tr>
+    <tr>
+      <td>删除 vs 归档</td><td>归档，可逆</td>
+      <td>删除空间省得干净，但判断错了就没救。归档要多维护一个 revive 路径</td>
+    </tr>
+    <tr>
+      <td>截断 vs 整条跳过</td><td>整条跳过</td>
+      <td>截断能塞进更多信息，但半句话最容易被当成完整事实。代价是浪费预算</td>
+    </tr>
+    <tr>
+      <td>模型判断 vs 代码规则</td><td>判断给模型，语义给代码</td>
+      <td>代码规则可预测但僵硬（字面相似度实测完全不管用）；模型灵活但会漂。所以把「不能错的」（证据、上限）留在代码</td>
+    </tr>
+    <tr>
+      <td>全量 vs 增量索引</td><td>全量替换</td>
+      <td>增量省 token，但几次之后索引变成补丁拼接，没人知道里面还有效的有多少。代价是每次都要看全部</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note" style="margin-top:30px">
+<b>这图里哪些验证过、哪些没有。</b><br>
+<b>验证过</b>（用线上真实数据：287 条记忆 + 两个真实群的 60 条对话）：分层隔离零泄漏、提升后跨群可见、压缩证据一条不丢（287→280 条，证据 287→287）、归档可逆、分场景索引分得开、IDF 改善排序、对话压缩压出可用的现场（含三个「没接住」的细节）。<br>
+<b>没验证</b>：长期跑下来索引会不会漂移、四项全开时一次 Dream 的 token 成本、归档会不会误伤、模型判断「该不该通用」在真实对话里准不准。这些要接真实群聊跑一段时间才知道。
+</div>
+
+</div>
+</body>
+</html>
