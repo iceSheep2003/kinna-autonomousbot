@@ -31,7 +31,8 @@ export function createSceneAffect(deps: {
       const key = deps.dedupe?.(input.scope, input.userId, at) ?? `${input.scope}:${input.userId}:${at}`;
       // 三个出口各自幂等：同一条消息重放不会重复扣分。
       if (Object.keys(appraisal.mood.deltas).length > 0) {
-        deps.mood.observeMood({ scope: input.scope, verdict: appraisal.mood, dedupeKey: `mood:${key}`, now: at });
+        const outcome = deps.mood.observeMood({ scope: input.scope, verdict: appraisal.mood, dedupeKey: `mood:${key}`, now: at });
+        if (process.env.DEBUG_AFFECT) console.error('[affect] mood outcome', JSON.stringify(outcome), 'verdict', JSON.stringify(appraisal.mood));
       }
       if (appraisal.rapport !== undefined) {
         deps.mood.observeRapport({ scope: input.scope, userId: input.userId,

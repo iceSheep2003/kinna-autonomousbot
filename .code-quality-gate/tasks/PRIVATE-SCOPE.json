@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "PRIVATE-SCOPE",
+  "title": "QQ 私聊是独立场景层，不再被当成群或降级成 owner",
+  "requirements": [
+    "private:xxx 必须被 parseScope 认出来，不能降级成 owner（那是全局可见层）",
+    "scopeOf 要区分私聊和群聊",
+    "私聊能读 owner 和自己的，读不到别人的私聊",
+    "私聊的记忆可以提升到 owner"
+  ],
+  "testFiles": ["test/private-scope.test.ts"],
+  "codeFiles": ["src/memory/scope.ts", "src/execution/scene.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

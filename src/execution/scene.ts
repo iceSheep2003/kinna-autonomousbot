@@ -60,8 +60,14 @@ reflect 只通知长期 self，不直接修改主体目标、身份或情绪。�
  * 场景的索引作用域：qq 场景按群（group:xxx），其它按功能（feature:环境）。
  * 与记忆 scope 用同一套写法，索引和记忆才对得上。
  */
+/**
+ * 这个场景属于哪一层记忆。
+ *
+ * QQ 私聊必须是 `private:`，不能和群混在一起：同一个数字当人和当群是两回事，
+ * 混了就会「私聊里说的话被当成群里的公开事」。
+ */
 export function scopeOf(state: { environment: string; scope: Record<string, string>; id: string }): string {
-  const kind = state.environment === 'qq' ? 'group' : 'feature';
+  const kind = state.environment !== 'qq' ? 'feature' : state.scope.type === 'private' ? 'private' : 'group';
   return `${kind}:${state.scope.id ?? state.id}`;
 }
 

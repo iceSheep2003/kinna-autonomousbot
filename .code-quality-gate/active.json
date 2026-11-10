@@ -1,4 +1,4 @@
 {
-  "manifest": ".code-quality-gate/tasks/AFFECT-MEMORY-3.json",
+  "manifest": ".code-quality-gate/tasks/PRIVATE-SCOPE.json",
   "config": "quality.config.json"
 }

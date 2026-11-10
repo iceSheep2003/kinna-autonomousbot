@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "id": "PRIVATE-SCOPE",
+  "attempts": 2,
+  "red": {
+    "time": "2026-11-10T13:58:08.763Z",
+    "snapshot": {
+      "contract": "0e0fb507821fdcb05ee49689497af87f2970080f48e90d9697ba3c3a98f611a6",
+      "protected": {
+        ".code-quality-gate/tasks/PRIVATE-SCOPE.json": "f68c14b230bbc3c412b2f1828811d5f9732b0fc79514666a3628bd9ce842a3d5",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/private-scope.test.ts": "a2446cff67e7b68ba82f569bf7ec299ba528ed2bd143ac56e4c2c14b17e6fe08"
+      },
+      "code": {
+        "src/execution/scene.ts": "ac85771f24bf0e6f4720b23aa9d2f91d2221306fad28289944fdd56563f836ba",
+        "src/memory/scope.ts": "3b6fcf9682988312d12834d56ef1e69682f261d41bae46d607d7194f9c13f146"
+      }
+    },
+    "report": ".quality/code-quality-gate/PRIVATE-SCOPE/red-609f2a5c-3742-4d77-8b6f-f5dc5bb31713.md"
+  },
+  "green": {
+    "time": "2026-11-10T13:59:40.449Z",
+    "snapshot": {
+      "contract": "0e0fb507821fdcb05ee49689497af87f2970080f48e90d9697ba3c3a98f611a6",
+      "protected": {
+        ".code-quality-gate/tasks/PRIVATE-SCOPE.json": "f68c14b230bbc3c412b2f1828811d5f9732b0fc79514666a3628bd9ce842a3d5",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/private-scope.test.ts": "a2446cff67e7b68ba82f569bf7ec299ba528ed2bd143ac56e4c2c14b17e6fe08"
+      },
+      "code": {
+        "src/execution/scene.ts": "88c1c014ae640a1e3513523bc7ee0346be402546b4da4e7c94393bd94be79e26",
+        "src/memory/scope.ts": "2261f073b531cd26b0b7b468737bf118638ebcb21de55109137065f0f3fc618d"
+      }
+    },
+    "report": ".quality/code-quality-gate/PRIVATE-SCOPE/green-df1a0594-e65c-4302-b6e4-819feeae05b0.md"
+  }
+}

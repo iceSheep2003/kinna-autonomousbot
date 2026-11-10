@@ -69,7 +69,7 @@ function relevance(input: TurnAppraisalInput, add: (name: keyof MoodValues, amou
 /** ② 利害：好话抬心情，坏话压心情并加压力。负面权重必须压过招呼的 +2。 */
 function valence(input: TurnAppraisalInput, add: (name: keyof MoodValues, amount: number) => void): string {
   if (has(input.text, HOSTILE)) {
-    add('valence', -3); add('stress', 3); add('sociability', -4);
+    add('valence', -3); add('stress', 3); add('sociability', -2);
     return '被怼了一句';
   }
   if (has(input.text, DOUBT)) { add('stress', 2); add('valence', -1); return '被质疑了一句'; }
@@ -93,10 +93,14 @@ function coping(input: TurnAppraisalInput, add: (name: keyof MoodValues, amount:
  */
 export function appraiseTurn(input: TurnAppraisalInput): TurnAppraisal {
   const { add, values } = adder();
-  const first = [relevance(input, add), valence(input, add), coping(input, add)].filter(text => text !== '');
+  // 被怼时不加「有人找我」的分：被骂了不会因为被 @ 到而高兴。
+  // 顺带让维度数落在 3 个以内——否则 sociability 会被挤掉，
+  // 「被怼了不想说话」这个最重要的表现就丢了。
+  const hostile = has(input.text, HOSTILE);
+  const first = [hostile ? '' : relevance(input, add), valence(input, add), coping(input, add)]
+    .filter(text => text !== '');
   // 几句都成立时取最后一句：应对的描述更贴近「这一轮我怎么样」。
   const reason = first.at(-1) ?? '这轮没什么起伏';
-  const hostile = has(input.text, HOSTILE);
   const praised = !hostile && has(input.text, PRAISE);
   const rapport = hostile ? { delta: -2, reason: '对方说了难听的话' }
     : praised ? { delta: 2, reason: '对方表达了认可' } : undefined;
@@ -104,7 +108,26 @@ export function appraiseTurn(input: TurnAppraisalInput): TurnAppraisal {
   // 自造值会被下游安全丢弃，等于没记。
   const reaction = hostile ? { label: '受伤' as const, intensity: 'clear' as const, reason: '被怼了一句' }
     : praised ? { label: '开心' as const, intensity: 'slight' as const, reason: '被夸了一句' } : undefined;
-  return { mood: { deltas: values, reason: reason.slice(0, 80) }, rapport, reaction };
+  return { mood: { deltas: topDeltas(values), reason: reason.slice(0, 80) }, rapport, reaction };
+}
+
+/** 一轮最多改几个维度。和 parseMoodVerdict 的上限一致，超出的会被整条拒绝。 */
+export const MAX_DIMENSIONS = 3;
+
+/**
+ * 只保留影响最大的几个维度。
+ *
+ * `parseMoodVerdict` 有「一轮最多 3 维」的防线，超了它会把**整条 verdict 拒掉**——
+ * 不是截断，是全丢。所以这里必须先收窄，否则情绪一条都记不上。
+ *
+ * 按绝对值排序，并列时保留先出现的（相关性在前，利害在后）：
+ * 被怼的时候「兴趣上涨」本来就该丢，留 valence/stress/sociability 才对。
+ */
+function topDeltas(deltas: Partial<MoodValues>): Partial<MoodValues> {
+  const entries = (Object.entries(deltas) as [keyof MoodValues, number][]).filter(([, value]) => value !== 0);
+  if (entries.length <= MAX_DIMENSIONS) return deltas;
+  const kept = [...entries].sort((left, right) => Math.abs(right[1]) - Math.abs(left[1])).slice(0, MAX_DIMENSIONS);
+  return Object.fromEntries(kept) as Partial<MoodValues>;
 }
 
 /** 值得记住的门槛：情绪维度（好坏/压力）的显著变化。 */

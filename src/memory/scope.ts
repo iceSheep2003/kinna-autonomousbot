@@ -8,7 +8,10 @@
  * 这里改成层级：
  *
  *   owner  ← 所有场景共享（用户偏好、跨场景的长期事实）
- *     └ group:<id> / feature:<id> / project:<id>  ← 只在各自场景可见
+ *     └ group:<id> / private:<id> / feature:<id> / project:<id>  ← 只在各自场景可见
+ *
+ * `private:<QQ号>` 和 `group:<群号>` 即使数字相同也**不是**同一层：
+ * 一个是跟某个人的私聊，一个是群里的事，混了就是隐私事故。
  *
  * 读取规则：**向下看得到，向上看不到**。
  *   在 group:A 里能读 owner + group:A，但读不到 group:B。
@@ -17,7 +20,13 @@
  * 为什么不能「先全量召回再用提示词要求模型忽略」：那样一旦模型不听话就泄露了。
  * 过滤必须在检索之前完成，模型根本看不到它无权读的内容。
  */
-export type ScopeKind = 'owner' | 'group' | 'feature' | 'project' | 'bot';
+/**
+ * `private` 是 QQ 私聊：和 `group` 平级但语义不同。
+ *
+ * 缺了它会出隐私问题——`private:123` 解析失败时会被静默降级成 `owner`，
+ * 那是**所有场景都能读**的层。私聊里记的事就成了公开事实。
+ */
+export type ScopeKind = 'owner' | 'group' | 'private' | 'feature' | 'project' | 'bot';
 
 export interface MemoryScope {
   kind: ScopeKind;
@@ -39,7 +48,7 @@ export function parseScope(raw: unknown): MemoryScope {
   const text = raw.trim();
   if (text === 'owner' || text === 'global') return { kind: 'owner' };
   // id 里不允许再出现冒号：`group:123:456` 这种会被当成两个字段，宁可判为非法。
-  const match = /^(group|feature|project|bot):([A-Za-z0-9_.-]{1,120})$/.exec(text);
+  const match = /^(group|private|feature|project|bot):([A-Za-z0-9_.-]{1,120})$/.exec(text);
   return match === null ? { kind: 'owner' } : { kind: match[1] as ScopeKind, id: match[2]! };
 }
 
