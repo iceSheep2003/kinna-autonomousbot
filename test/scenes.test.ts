@@ -30,7 +30,8 @@ test('普通 QQ 消息直接进入自己的场景会话；工具回执也留在�
   const model = new Model(request => {
     if (request.role === 'self') return { reflection: '初始化后暂时等待。' };
     assert.equal(request.role, 'scene'); const c = request.context as any;
-    return c.observations.some((e: any) => e.kind === 'tool.result') ? { type: 'wait', summary: '已经在群里回复了问候。' }
+    // 判断「我说过话了吗」看的是投影后的对话记录：assistant 那一条就是自己说的。
+    return c.transcript.some((m: any) => m.role === 'assistant') ? { type: 'wait', summary: '已经在群里回复了问候。' }
       : { type: 'tool', name: 'qq.send_message', input: { target: c.session.scope, text: '你好呀' }, progress: '在当前群回复问候' };
   });
   const f = fixture(model); let handler!: (event: Record<string, unknown>) => Promise<void>; let sends = 0;
@@ -62,7 +63,10 @@ test('各群聊/私聊保持独立 session；等待之后的新消息沿用原 s
     const local = model.requests.filter(r => r.role === 'scene');
     assert.deepEqual(local.map(r => (r.context as any).session.id), ['qq:99:group:123', 'qq:99:private:2', 'qq:99:group:123']);
     assert.equal((local[2]!.context as any).session.summary, '保留qq:99:group:123的前情');
-    assert.equal((local[1]!.context as any).observations.some((e: any) => e.data.data.groupId === '123'), false);
+    // 隔离性：private 会话的对话记录里不该出现群里的那条消息。
+    // 投影后没有 groupId 可比，就比内容——那条群消息的文本是「你好」，而 private 的也是「你好」，
+    // 所以改用昵称/条数判断：private 只收到自己那一条。
+    assert.equal((local[1]!.context as any).transcript.length, 1, 'private 只该看到自己那一条');
     assert.equal(model.requests.filter(r => r.role === 'self').length, 1);
   } finally { f.close(); }
 });
@@ -70,7 +74,7 @@ test('各群聊/私聊保持独立 session；等待之后的新消息沿用原 s
 test('只有场景明确提交反思触发事件后才唤醒 self，由 self 调整主体方向', async () => {
   const model = new Model(request => request.role === 'self'
     ? { reflection: '评估方向', ...((request.context as any).subject.revision > 0 ? { direction: '认真了解群友反复讨论的迁徙问题' } : {}) }
-    : { type: 'reflect', trigger: 'important_discovery', summary: '连续讨论产生了值得长期研究的问题', evidence: [(request.context as any).observations[0].seq] });
+    : { type: 'reflect', trigger: 'important_discovery', summary: '连续讨论产生了值得长期研究的问题', evidence: [(request.context as any).transcript[0].seq] });
   const f = fixture(model);
   try {
     await f.agent.runtime.tick(NOW);

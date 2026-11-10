@@ -65,6 +65,13 @@ export class PeopleRoster implements PeopleStore {
   get(userId: string): Person | undefined { return this.store.get(userId); }
   save(person: Person): void { this.store.save(person); }
   observe(data: unknown, now: number): void { trackPerson(this.store, observe(data), now); }
+  /** 单个 QQ 号的人物卡片；没见过就返回 undefined，让调用方什么都不加。 */
+  profile(userId: string): string | undefined {
+    const person = this.store.get(userId);
+    if (!person) return undefined;
+    return this.render(person);
+  }
+
   /** 渲染最近认识的几个人。空的话返回空串，不占上下文。 */
   roster(limit: number): string {
     const rows = this.store.recent?.(limit) ?? this.store.list?.(limit) ?? [];

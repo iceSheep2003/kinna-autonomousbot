@@ -151,6 +151,21 @@ export class MemoryService implements MemoryView {
     return parts.filter(text => text !== '').join('\n\n');
   }
 
+  /**
+   * 按人取事实：这个 QQ 号相关的记忆，按重要度和时间排。
+   *
+   * 场景里每次有人说话都会调它——所以必须走索引（subject_user_id），
+   * 不能靠"检索碰运气"。读不到就是真的没记过这个人。
+   */
+  factsAbout(userId: string, scope: string, limit: number): Memory[] {
+    const rows = this.repository.factsAbout?.(userId, scope, limit * 3)
+      // 老仓储没有这个能力时退回候选池里筛：慢一点但结果一样。
+      ?? this.pool({ query: userId, limit: limit * 3, now: this.now(), scope }).filter(memory => memory.subjectUserId === userId);
+    return rows
+      .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      .slice(0, limit);
+  }
+
   /** 按 id 展开：只返回真的存在的，顺序按传入顺序，方便模型对照索引。 */
   expand(ids: readonly string[]): Memory[] {
     return ids.map(id => this.repository.get(id)).filter((memory): memory is Memory => memory !== undefined);

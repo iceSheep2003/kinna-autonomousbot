@@ -6,11 +6,14 @@ import { UncertainOperation } from '../capabilities/ports.js';
 import { SOCIAL_LINES, personaText, type Personality } from '../shared/persona.js';
 import { COMPACT_EVERY, renderSceneState, shouldCompact, type SceneState } from './scene-compaction.js';
 import type { SceneCompactor } from './scene-compactor.js';
+import { currentSpeaker, transcriptWindow, type TranscriptMessage } from './transcript.js';
 
 /** 场景需要的人物能力：观察与列出。 */
 export interface PeopleView {
   observe(data: unknown, now: number): void;
   roster?(limit: number): string;
+  /** 某个 QQ 号的人物卡片（画像 + 近况）；没记过这个人时返回 undefined。 */
+  profile?(userId: string): string | undefined;
 }
 import type { SubjectView } from '../subject/ports.js';
 import type { ExperienceLog, MemoryView } from '../memory/ports.js';
@@ -69,6 +72,8 @@ export interface SceneDependencies {
   compactor?: SceneCompactor;
   /** 人物：观察消息里的人，注入时给认识的几张卡片。 */
   people?: PeopleView;
+  /** 对话记录字符预算，默认 6000。 */
+  historyChars?: number;
 }
 
 type ToolDecision = Extract<SceneDecision, { type: 'tool' }>;
@@ -92,11 +97,14 @@ export class SceneSessions {
   private readonly memory?: MemoryView;
   private readonly compactor?: SceneCompactor;
   private readonly people?: PeopleView;
+  /** 对话记录的字符预算：一条不切半，装不下的旧消息从前面掉。 */
+  private readonly historyChars: number;
   constructor(deps: SceneDependencies) {
     this.repository = deps.repository; this.experience = deps.experience; this.subject = deps.subject;
     this.model = deps.model; this.capabilities = deps.capabilities; this.requests = deps.requests;
     this.boundaries = deps.boundaries; this.limits = deps.limits; this.personality = deps.personality;
     this.memory = deps.memory; this.compactor = deps.compactor; this.people = deps.people;
+    this.historyChars = deps.historyChars ?? 6000;
   }
   receive(scene: SceneDescriptor, kind: string, data: unknown, now: number): void {
     const old = this.repository.get(scene.id);
@@ -168,6 +176,12 @@ export class SceneSessions {
   private context(frame: LoadFrame) {
     const subject = this.subject.read();
     const query = JSON.stringify(frame.observations).slice(0, 3000);
+    // 对话记录：格式化后的「谁说了什么」。原始经验里昵称是嵌套字段，
+    // 自己说的话只剩回执——不投影的话模型既认不出人，也想不起自己说过什么。
+    const transcript = transcriptWindow(frame.observations, this.historyChars);
+    // 当前说话人 + 关于他的事实：按 QQ 号取，不靠检索碰运气。
+    // 这是「记住群友是谁、记得他说过什么」真正生效的地方。
+    const speaker = this.speakerContext(frame, transcript);
     return { now: frame.now, session: frame.state, subject: { identity: subject.identity, direction: subject.direction, affect: subject.affect },
       ...this.optionalContext(frame),
       // 场景记忆：owner 层（所有场合适用）+ 这个群/这个环境的。scope 由环境与 id 决定。
@@ -175,9 +189,27 @@ export class SceneSessions {
         query, limit: this.limits.memories, now: frame.now,
         scope: `${frame.state.environment === 'qq' ? 'group' : 'feature'}:${frame.state.scope.id ?? frame.id}`,
       }) } : {}),
-      observations: frame.observations, recent: this.repository.recentDecisions(frame.id, this.limits.recentTurns),
+      transcript, ...(Object.keys(speaker).length === 0 ? {} : { speaker }),
+      recent: this.repository.recentDecisions(frame.id, this.limits.recentTurns),
       capabilities: this.capabilities.catalog(frame.allowed) };
   }
+  /**
+   * 当前说话人：他是谁、我记着他的什么。
+   *
+   * 空对象表示这一轮没有明确的说话人（比如定时触发），此时不注入——
+   * 塞一个空的「说话人」块只会让模型以为在跟无名氏对话。
+   */
+  private speakerContext(frame: LoadFrame, transcript: readonly TranscriptMessage[]): Record<string, unknown> {
+    const who = currentSpeaker(frame.observations);
+    if (who.userId === undefined) return {};
+    const scope = scopeOf(frame.state);
+    const facts = this.memory?.factsAbout?.(who.userId, scope, 8) ?? [];
+    const person = this.people?.profile?.(who.userId);
+    const blocks: Array<[string, unknown]> = [['userId', who.userId], ['name', who.name], ['person', person], ['facts', facts],
+      ['transcriptTail', transcript.filter(m => m.userId === who.userId).length]];
+    return Object.fromEntries(blocks.filter(([, value]) => value !== undefined && value !== null && value !== ''));
+  }
+
   /**
    * 可选的三块内容：现场状态、索引、认识的人。
    * 空的一律不塞进上下文——空字符串占预算，还会让模型以为「这里本来就该空」。
@@ -202,7 +234,8 @@ export class SceneSessions {
     } catch (error) { uncertain = error instanceof UncertainOperation; result = { error: String(error), uncertain }; }
     return () => {
       this.repository.appendTurn(frame.id, { at: frame.now, context: frame.step.context, decision: action });
-      this.experience.record(frame.source, 'tool.result', { operationId: `operation:${frame.stepId}`, name: action.name, result }, frame.now);
+      // 连入参一起记：只说「我调用过 send_message」不够——下次要能想起**说了什么**。
+      this.experience.record(frame.source, 'tool.result', { operationId: `operation:${frame.stepId}`, name: action.name, input: action.input, result }, frame.now);
       this.repository.save({ ...frame.state, cursor: frame.step.through, steps: uncertain ? 0 : frame.state.steps + 1, updatedAt: frame.now });
       if (!uncertain) this.requests.continue(frame.id, frame.now);
     };

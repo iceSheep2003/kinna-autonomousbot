@@ -85,6 +85,16 @@ export class SqliteMemoryRepository implements MemoryRepository {
     writeEvidence(this.db.db, row);
   }
 
+  /**
+   * 按人取事实，走 memories_subject 索引。
+   * 作用域同样遵守「owner + 当前场景」，不越界。
+   */
+  factsAbout(userId: string, scope: string, limit: number) {
+    return this.db.db.prepare(
+      `SELECT * FROM memories WHERE subject_user_id=? AND status='active' AND scope IN ('owner', ?)
+       ORDER BY importance DESC, updated_at DESC LIMIT ?`).all(userId, scope, limit).map(row => fromRow(row)!);
+  }
+
   cursor() { return this.db.get<number>('meta', 'dreamCursor') ?? 0; }
   index(scope = 'owner') { return readIndex(this.db, scope); }
   indexes() { return readIndexes(this.db); }
