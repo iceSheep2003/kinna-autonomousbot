@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "SESSION-PREFIX",
+  "title": "self 与 execution session 的 context 也要稳定",
+  "requirements": [
+    "self 的 subject 只放人格/方向，affect 挪到末尾 state",
+    "execution 的 execution 只放意图/工具，状态挪到末尾 state",
+    "两个 session 相邻两轮的公共前缀不低于 80%"
+  ],
+  "testFiles": ["test/session-prefix.test.ts", "test/prefix-cache.test.ts", "test/prompt-stability.test.ts"],
+  "codeFiles": ["src/self/context.ts", "src/self/session.ts", "src/execution/runner.ts", "src/infrastructure/models/demo.ts", "src/shared/prefix.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

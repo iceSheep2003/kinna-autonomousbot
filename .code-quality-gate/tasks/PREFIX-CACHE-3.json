@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "PREFIX-CACHE-3",
+  "title": "prompt 前缀稳定到 90%：稳定与易变数据分开装",
+  "requirements": [
+    "调用层按稳定→易变重排 context",
+    "session/subject 只放真正不变的字段；summary/cursor/affect 挪到末尾 state",
+    "相邻两轮实际请求的公共前缀不低于 80%（实测 90%）"
+  ],
+  "testFiles": ["test/prompt-stability.test.ts", "test/prefix-cache.test.ts", "test/scenes.test.ts"],
+  "codeFiles": ["src/infrastructure/models/openai-compatible.ts", "src/shared/prefix.ts", "src/execution/scene.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

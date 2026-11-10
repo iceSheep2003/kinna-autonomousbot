@@ -62,7 +62,8 @@ test('各群聊/私聊保持独立 session；等待之后的新消息沿用原 s
     f.agent.runtime.ingest(sceneEvent('three', 'qq:99:group:123'), NOW + 3); await f.agent.runtime.tick(NOW + 3);
     const local = model.requests.filter(r => r.role === 'scene');
     assert.deepEqual(local.map(r => (r.context as any).session.id), ['qq:99:group:123', 'qq:99:private:2', 'qq:99:group:123']);
-    assert.equal((local[2]!.context as any).session.summary, '保留qq:99:group:123的前情');
+    // summary 在 state 里：它每轮会变，放在 session 里会让前缀缓存在第一个字段就断掉。
+    assert.equal((local[2]!.context as any).state.summary, '保留qq:99:group:123的前情');
     // 隔离性：private 会话的对话记录里不该出现群里的那条消息。
     // 投影后没有 groupId 可比，就比内容——那条群消息的文本是「你好」，而 private 的也是「你好」，
     // 所以改用昵称/条数判断：private 只收到自己那一条。
@@ -73,7 +74,7 @@ test('各群聊/私聊保持独立 session；等待之后的新消息沿用原 s
 
 test('只有场景明确提交反思触发事件后才唤醒 self，由 self 调整主体方向', async () => {
   const model = new Model(request => request.role === 'self'
-    ? { reflection: '评估方向', ...((request.context as any).subject.revision > 0 ? { direction: '认真了解群友反复讨论的迁徙问题' } : {}) }
+    ? { reflection: '评估方向', ...((request.context as any).state.revision > 0 ? { direction: '认真了解群友反复讨论的迁徙问题' } : {}) }
     : { type: 'reflect', trigger: 'important_discovery', summary: '连续讨论产生了值得长期研究的问题', evidence: [(request.context as any).transcript[0].seq] });
   const f = fixture(model);
   try {

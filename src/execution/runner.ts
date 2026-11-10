@@ -83,10 +83,14 @@ export class ExecutionRunner {
   }
   private context(execution: Execution, now: number) {
     const source = `execution:${execution.id}`;
-    return { now, execution, memories: this.memory.recall(execution.intent, this.limits.memories),
+    // 稳定部分（意图、工具）放前面；会变的执行状态放末尾的 state 里。
+    return {
+      execution: { id: execution.id, intent: execution.intent, tools: execution.tools },
+      capabilities: this.capabilities.catalog(execution.tools.filter(t => this.boundaries.allowedTools.includes(t))),
+      memories: this.memory.recall(execution.intent, this.limits.memories),
       recent: this.repository.recentDecisions(execution.id, this.limits.recentTurns),
       observations: this.experience.recent(source, this.limits.observations),
-      capabilities: this.capabilities.catalog(execution.tools.filter(t => this.boundaries.allowedTools.includes(t))) };
+      state: { status: execution.status, steps: execution.steps, now } };
   }
   private async decide(id: string, stepId: string, execution: Execution, context: unknown): Promise<ExecutionDecision> {
     const stored = this.repository.decision(stepId);

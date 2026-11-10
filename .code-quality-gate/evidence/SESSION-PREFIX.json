@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "SESSION-PREFIX",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-10T14:12:27.968Z",
+    "snapshot": {
+      "contract": "d1711174fe0ff4dd3165eea24bdd424ccaed8dad226e0411a63f02a5012c2104",
+      "protected": {
+        ".code-quality-gate/tasks/SESSION-PREFIX.json": "14e5e28774a7199a6f27fa38224e098f315d1436b7c3bf2c000ba7ed8732bd4c",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/prefix-cache.test.ts": "419726519eea12dde7c195abd8bb3b356e641628ce975d0bd5131130c9c3dc39",
+        "test/prompt-stability.test.ts": "432086506b0fbcd0a446d48ad10bbb7e16ef999919e65d409468c119333f3407",
+        "test/session-prefix.test.ts": "5a7c7f6b0a443c385f8091cd660d7c5494767412246464783dc12c88cf08294e"
+      },
+      "code": {
+        "src/execution/runner.ts": "6b077e1460c48dc98b9ebca067079bb1adabb33e4623b0dffed5696d14cdccc1",
+        "src/infrastructure/models/demo.ts": "6418b6612ef1ac347c6f9b3d3f3813fe99f50e6e711d9f716b30c791ac506152",
+        "src/self/context.ts": "d2a1f75ef9f8adca20b5828035a05f961340a8c239c92a9ca6ba8c811a7f12bd",
+        "src/self/session.ts": "2fb5b2f898c360cbf8c8bda541af70c10fd9f807f59302e3065bca772050c93d",
+        "src/shared/prefix.ts": "6ea93a3c7fdbc4266fddc5d791eda18edc02fd0aef4f8dd124f5be6cfdeed9d3"
+      }
+    },
+    "report": ".quality/code-quality-gate/SESSION-PREFIX/red-d33017c9-c972-4895-8648-6006329d7c05.md"
+  },
+  "green": {
+    "time": "2026-11-10T14:12:38.093Z",
+    "snapshot": {
+      "contract": "d1711174fe0ff4dd3165eea24bdd424ccaed8dad226e0411a63f02a5012c2104",
+      "protected": {
+        ".code-quality-gate/tasks/SESSION-PREFIX.json": "14e5e28774a7199a6f27fa38224e098f315d1436b7c3bf2c000ba7ed8732bd4c",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/prefix-cache.test.ts": "419726519eea12dde7c195abd8bb3b356e641628ce975d0bd5131130c9c3dc39",
+        "test/prompt-stability.test.ts": "432086506b0fbcd0a446d48ad10bbb7e16ef999919e65d409468c119333f3407",
+        "test/session-prefix.test.ts": "5a7c7f6b0a443c385f8091cd660d7c5494767412246464783dc12c88cf08294e"
+      },
+      "code": {
+        "src/execution/runner.ts": "6b077e1460c48dc98b9ebca067079bb1adabb33e4623b0dffed5696d14cdccc1",
+        "src/infrastructure/models/demo.ts": "6418b6612ef1ac347c6f9b3d3f3813fe99f50e6e711d9f716b30c791ac506152",
+        "src/self/context.ts": "ad354f0083bf275dfdfa2a5f153af504d99b42c9fb7bad2bd31920424c2e3894",
+        "src/self/session.ts": "2fb5b2f898c360cbf8c8bda541af70c10fd9f807f59302e3065bca772050c93d",
+        "src/shared/prefix.ts": "6ea93a3c7fdbc4266fddc5d791eda18edc02fd0aef4f8dd124f5be6cfdeed9d3"
+      }
+    },
+    "report": ".quality/code-quality-gate/SESSION-PREFIX/green-91ff0d96-0820-4219-bc0f-a456c0ded55a.md"
+  }
+}

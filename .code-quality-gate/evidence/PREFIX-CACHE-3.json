@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "id": "PREFIX-CACHE-3",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-10T14:09:58.310Z",
+    "snapshot": {
+      "contract": "0329401ccdd98874b0a1fc6e05ea5bf37f91c5ba399d4d0f8c0b2aa70a86ee4a",
+      "protected": {
+        ".code-quality-gate/tasks/PREFIX-CACHE-3.json": "431cf70dbab91676c65478e183ec271ae82e63b9684bb8e0b8b499640a18ae6e",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/prefix-cache.test.ts": "419726519eea12dde7c195abd8bb3b356e641628ce975d0bd5131130c9c3dc39",
+        "test/prompt-stability.test.ts": "432086506b0fbcd0a446d48ad10bbb7e16ef999919e65d409468c119333f3407",
+        "test/scenes.test.ts": "10e6a9ac0ae2ea72b15d324ee037b25a4a207bbd7656221ace5c03f386755e3a"
+      },
+      "code": {
+        "src/execution/scene.ts": "b5b2d03882ec88b4dafe97daf44dcbf0535ab6fa40745b2464e12e659c504de8",
+        "src/infrastructure/models/openai-compatible.ts": "127099b7add3e8cfe4993faddf53e8bbacb08cc022fa9cc296d5ecd87736d17f",
+        "src/shared/prefix.ts": "6ea93a3c7fdbc4266fddc5d791eda18edc02fd0aef4f8dd124f5be6cfdeed9d3"
+      }
+    },
+    "report": ".quality/code-quality-gate/PREFIX-CACHE-3/red-1ebf2bfd-17df-421f-a5c3-5a5e74de757a.md"
+  },
+  "green": {
+    "time": "2026-11-10T14:10:04.852Z",
+    "snapshot": {
+      "contract": "0329401ccdd98874b0a1fc6e05ea5bf37f91c5ba399d4d0f8c0b2aa70a86ee4a",
+      "protected": {
+        ".code-quality-gate/tasks/PREFIX-CACHE-3.json": "431cf70dbab91676c65478e183ec271ae82e63b9684bb8e0b8b499640a18ae6e",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/prefix-cache.test.ts": "419726519eea12dde7c195abd8bb3b356e641628ce975d0bd5131130c9c3dc39",
+        "test/prompt-stability.test.ts": "432086506b0fbcd0a446d48ad10bbb7e16ef999919e65d409468c119333f3407",
+        "test/scenes.test.ts": "10e6a9ac0ae2ea72b15d324ee037b25a4a207bbd7656221ace5c03f386755e3a"
+      },
+      "code": {
+        "src/execution/scene.ts": "b5b2d03882ec88b4dafe97daf44dcbf0535ab6fa40745b2464e12e659c504de8",
+        "src/infrastructure/models/openai-compatible.ts": "90f30a982b7e906f8aebcae6557d9fa42217013d53aa945248e8ef7056599667",
+        "src/shared/prefix.ts": "6ea93a3c7fdbc4266fddc5d791eda18edc02fd0aef4f8dd124f5be6cfdeed9d3"
+      }
+    },
+    "report": ".quality/code-quality-gate/PREFIX-CACHE-3/green-ee215d3a-4092-48a4-bc0d-b026e77f2a02.md"
+  }
+}

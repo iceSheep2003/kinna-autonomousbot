@@ -52,7 +52,12 @@ export class SelfContextBuilder {
     const query = JSON.stringify(observations).slice(0, payloadBudget.recallQueryChars);
     const indexText = this.memory.indexText?.() ?? '';
     const moodText = this.moodNarration?.() ?? '';
-    return { cursor, now, trigger, previousAttemptError, subject: this.subject.read(),
+    // 前缀缓存：subject 只放**不变**的东西（人格、方向）。
+    // affect 每轮会被场景改，混进来会让后面所有稳定内容一起失效——实测命中率只有 37%。
+    const self_state = this.subject.read(); void self_state.revision; void self_state.focus;
+    return {
+      subject: { id: self_state.id, identity: self_state.identity, direction: self_state.direction, tendencies: self_state.tendencies },
+      capabilities: this.capabilities.catalog(this.toolNames ?? this.boundaries.allowedTools), boundaries: this.boundaries,
       goals: this.subject.goals(query, this.limits.goals),
       // 心境：一句话，不是数字。self 只读——它没看过那一轮对话，不该写这个。
       ...(moodText === '' ? {} : { mood: moodText }),
@@ -62,8 +67,9 @@ export class SelfContextBuilder {
       observations, recent: this.session.recentDecisions(this.limits.recentTurns),
       // 自己想做的事：只给开着的、最新的几条，避免清单一长就变成负担。
       ...(this.todos ? { todos: this.todos().slice(0, 5) } : {}),
-      // 工具清单由装配层按场景算好传进来；self 不认识「场景」这个概念。
-      capabilities: this.capabilities.catalog(this.toolNames ?? this.boundaries.allowedTools), boundaries: this.boundaries,
-      schedules: this.schedules.pending(this.limits.schedules), executions: this.executions.ongoing(this.limits.executions) };
+      schedules: this.schedules.pending(this.limits.schedules), executions: this.executions.ongoing(this.limits.executions),
+      // 会变的部分统一放这里：情绪、焦点、游标、本次唤醒的原因。
+      state: { affect: self_state.affect, focus: self_state.focus, revision: self_state.revision,
+        cursor, now, trigger, previousAttemptError } };
   }
 }

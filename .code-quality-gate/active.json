@@ -1,4 +1,4 @@
 {
-  "manifest": ".code-quality-gate/tasks/SCENE-PRIVACY.json",
+  "manifest": ".code-quality-gate/tasks/SESSION-PREFIX.json",
   "config": "quality.config.json"
 }

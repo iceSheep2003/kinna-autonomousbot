@@ -81,9 +81,10 @@ export class SelfSession {
     const context = this.context.build(trigger, error, now);
     const decision = SelfDecisionSchema.parse(await this.model.decide({ role: 'self', instructions: selfInstructions(this.personality), context, schema: SelfDecisionSchema }));
     return () => {
-      this.committer.apply(decision, context.subject.revision, context.observations.map(e => e.seq), now);
+      // revision/cursor 现在在 state 里：它们是每轮会变的值，和稳定的人格字段分开装。
+      this.committer.apply(decision, context.state.revision, context.observations.map(e => e.seq), now);
       this.repository.append({ at: now, context, decision });
-      const cursor = context.observations.at(-1)?.seq ?? context.cursor;
+      const cursor = context.observations.at(-1)?.seq ?? context.state.cursor;
       this.repository.advanceCursor(cursor);
       this.inbox.continueIfUnread(cursor, now + 1000);
     };

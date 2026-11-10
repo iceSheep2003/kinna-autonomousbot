@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "PREFIX-CACHE",
+  "attempts": 0,
+  "red": {
+    "time": "2026-11-10T14:07:51.850Z",
+    "snapshot": {
+      "contract": "eace0b91dcdbd4d618c2ccf5904a568166bb69e6a3cd54b7220c45dff3d3cb62",
+      "protected": {
+        ".code-quality-gate/tasks/PREFIX-CACHE.json": "b34fa4c3a9c5019e87383d8d8821438c1070ca3e052a8147d0864dd0ad7fc21a",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/prefix-cache.test.ts": "c0c7805fbc45c5a6808389e190414ff5809258e7471585af6d58f295725aac87",
+        "test/prompt-stability.test.ts": "432086506b0fbcd0a446d48ad10bbb7e16ef999919e65d409468c119333f3407"
+      },
+      "code": {
+        "src/infrastructure/models/openai-compatible.ts": "d323a15340d5c15e22eee52b5abbc5610099fb3f4beff156e808a0c593e3f557",
+        "src/shared/prefix.ts": "bf9b88cfb1792bf6f19c83a9779d82d2fe07546e794f9b34a5642073ff2b3580"
+      }
+    },
+    "report": ".quality/code-quality-gate/PREFIX-CACHE/red-2002de98-db21-4985-8ba3-ccc60210d5c4.md"
+  }
+}

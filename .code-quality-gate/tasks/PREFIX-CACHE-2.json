@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "PREFIX-CACHE-2",
+  "title": "prompt 前缀稳定：把缓存命中率压到 80%（重跑）",
+  "requirements": [
+    "调用层要按稳定→易变重排 context，不能依赖每个构造器记得",
+    "now 这类每轮必变的短值排在最后",
+    "相邻两轮实际请求的公共前缀不低于 80%"
+  ],
+  "testFiles": ["test/prompt-stability.test.ts", "test/prefix-cache.test.ts"],
+  "codeFiles": ["src/infrastructure/models/openai-compatible.ts", "src/shared/prefix.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

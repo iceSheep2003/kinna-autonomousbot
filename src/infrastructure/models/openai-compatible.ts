@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stableOrder } from '../../shared/prefix.js';
 import { readFile } from 'node:fs/promises';
 import type { LanguageModel, ModelImage, ModelRequest } from '../../shared/model.js';
 import type { ModelProfile, ProfileOverrides } from './profiles.js';
@@ -52,7 +53,16 @@ async function imageSource(image: ModelImage): Promise<string> {
 
 /** 一条 user 消息：先文字，再逐张图；每张图前面标一句「这是哪张」。 */
 async function userContent(request: ModelRequest<unknown>): Promise<unknown> {
-  const text = JSON.stringify(request.context);
+  // 前缀缓存：按稳定 → 易变重排，别让 `now` 这类字段把整条 prompt 的缓存打掉。
+  // 放在这一层是因为它是唯一出口——所有 session 都经过这里，不用各自记得。
+  // 前缀缓存：按稳定 → 易变重排，别让 `now` 这类字段把整条 prompt 的缓存打掉。
+  // 放在这一层是因为它是唯一出口——所有 session 都经过这里，不用各自记得。
+  const context = request.context;
+  const text = JSON.stringify(
+    typeof context === 'object' && context !== null && !Array.isArray(context)
+      ? stableOrder(context as Record<string, unknown>)
+      : context,
+  );
   if (!request.images?.length) return text;
   const blocks: unknown[] = [{ type: 'text', text }];
   for (const [index, image] of request.images.entries()) {

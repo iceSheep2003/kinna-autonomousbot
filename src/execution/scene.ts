@@ -230,16 +230,27 @@ export class SceneSessions {
     // 当前说话人 + 关于他的事实：按 QQ 号取，不靠检索碰运气。
     // 这是「记住群友是谁、记得他说过什么」真正生效的地方。
     const speaker = this.speakerContext(frame, transcript);
-    return { now: frame.now, session: frame.state, subject: { identity: subject.identity, direction: subject.direction, affect: subject.affect },
+    // 前缀缓存：**稳定和不稳定的数据必须分开装**。
+    // 把 `summary`/`cursor` 塞进 session、把 `affect` 塞进 subject，会让前两个字段就变，
+    // 后面的稳定内容（工具清单、人格）全部白搭——实测只有 63% 命中。
+    return {
+      // session 只放**真正不变**的东西。summary 会变，必须挪到末尾的 state 里——
+      // 放在这里会让 scope/id 后面的所有稳定内容一起失效（实测命中率掉到 63%）。
+      session: { id: frame.state.id, scope: frame.state.scope, environment: frame.state.environment },
+      subject: { identity: subject.identity, direction: subject.direction },
+      capabilities: this.capabilities.catalog(frame.allowed),
       ...this.optionalContext(frame),
       // 场景记忆：owner 层（所有场合适用）+ 这个群/这个环境的。scope 由环境与 id 决定。
       ...(this.memory ? { memories: this.memory.context?.({
         query, limit: this.limits.memories, now: frame.now,
         scope: scopeOf(frame.state),
       }) } : {}),
-      transcript, ...(Object.keys(speaker).length === 0 ? {} : { speaker }),
+      ...(Object.keys(speaker).length === 0 ? {} : { speaker }),
+      transcript,
       recent: this.repository.recentDecisions(frame.id, this.limits.recentTurns),
-      capabilities: this.capabilities.catalog(frame.allowed) };
+      // 会变的会话状态：summary/cursor/情绪都放这里，和上面稳定的一段分开。
+      state: { summary: frame.state.summary, cursor: frame.state.cursor, affect: subject.affect, now: frame.now },
+    };
   }
   /**
    * 当前说话人：他是谁、我记着他的什么。
