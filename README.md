@@ -168,6 +168,29 @@ B 站是三件事拼起来的：**看得懂视频**、**读得懂评论**、**�
   —— 从真实生成的库里 `sqlite3` dump 出来的表结构、数据行、查询计划
 - 设计取舍：[docs/memory-storage.md](docs/memory-storage.md)
 
+### 接上 QQ
+
+```bash
+cp agent.qq.example.json agent.qq.json     # 填 selfId / allowedGroups
+# .env 里设 QQ_ONEBOT_TOKEN（≥24 字符）
+AGENT_CONFIG=agent.qq.json npm start       # 起服务，监听 6199 等 NapCat 连过来
+```
+
+NapCat 那边加一个客户端：
+
+```json
+{ "name": "kinna", "enable": true, "url": "ws://127.0.0.1:6199/ws",
+  "token": "<QQ_ONEBOT_TOKEN>", "messagePostFormat": "array" }
+```
+
+端到端验证（不需要真的 QQ，用模拟 NapCat 跑真实报文）：
+
+```bash
+npm run verify:qq
+```
+
+它会把「普通消息 / 引用 / 语音 / 图片」四条路各发一条，然后打印**模型实际看到的对话记录**。
+
 ### 群聊里怎么记住人和话
 
 三个「记不住」是在这里解决的（照线上实测的做法）：

@@ -14,7 +14,8 @@
     "check": "npm run build && npm test",
     "quality": "cqg check",
     "audit": "cqg audit",
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "verify:qq": "npm run build && node scripts/verify-qq-line.mjs"
   },
   "dependencies": {
     "fastify": "^5.6.2",
