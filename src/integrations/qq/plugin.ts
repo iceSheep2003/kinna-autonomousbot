@@ -5,6 +5,7 @@ import type { OneBotPort, QqChannelPort, QqMediaSource, QqPerception, QqSpeech, 
 import { parseQqEvent, savePlatformEvent } from './events.js';
 import { registerQuotedImages, resolveQuote } from './quote.js';
 import { describeImage, describeImagesIn } from './perceive.js';
+import { applyPtt, transcribePtt } from './voice.js';
 import { QqMessaging } from './messaging.js';
 import { registerQqTools } from './tools.js';
 import { QqAdministration } from './admin.js';
@@ -38,11 +39,22 @@ async function enrich(input: {
       ? await describeQuotedImages(registered, input.state, perceive, input.media) : registered;
     event = { ...event, quoted: described };
   }
+  event = await withVoice(event, input.media, input.gateway);
   if (perceive === undefined) return event;
   const text = await describeImagesIn(event.text, input.media, {
     ...perceive, cache: { get: id => input.state.imageSummary?.(id), put: (id, summary) => input.state.saveImageSummary?.(id, summary) },
   });
   return text === event.text ? event : { ...event, text };
+}
+
+/**
+ * 语音：优先用 QQ 自己的转文字（免费、中文口语更准），转不出来才留给外部转写。
+ *
+ * 必须在拿到 `messageId` 的地方做——`fetch_ptt_text` 的参数是消息 id，不是语音文件。
+ */
+async function withVoice(event: QqEvent, media: readonly MediaRef[], gateway: OneBotPort): Promise<QqEvent> {
+  if (event.messageId === undefined || !media.some(ref => ref.kind === 'audio')) return event;
+  return { ...event, text: applyPtt(event.text, await transcribePtt(gateway, event.messageId)) };
 }
 
 /** 引用里的图逐张读一遍，把描述接到 quoted.text 后面。 */
