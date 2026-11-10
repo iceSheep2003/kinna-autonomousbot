@@ -172,3 +172,47 @@ test('真不认识的类型也留记号，而不是静默丢弃', async () => {
   assert.match(event.text, /消息类型:brand_new_type/);
   assert.equal(event.parts[0]!.type, 'brand_new_type', '记下原始类型，排查时知道是哪种');
 });
+
+/* ------------------------------ 表情 ------------------------------ */
+
+test('QQ 自带表情带名字，不是一句 [QQ表情]', async () => {
+  const { parseQqEvent } = await import('../src/integrations/qq/events.js');
+  const { QqConfigSchema } = await import('../src/integrations/qq/types.js');
+  const config = QqConfigSchema.parse({ selfId: '99', allowedGroups: ['123'] });
+  const parse = (faceId: unknown) => parseQqEvent({ post_type: 'message', message_type: 'group', self_id: 99, group_id: 123,
+    user_id: 2, message_id: 1, time: 1, sender: { nickname: '牢e' }, message: [{ type: 'face', data: { id: faceId } }] }, config, 1)!.event;
+  assert.equal(parse(178).text, '[表情:斜眼笑]', '表情在群聊里常常就是一句话的意思');
+  assert.equal(parse(14).text, '[表情:微笑]');
+  assert.equal(parse(999999).text, '[表情:999999]', '查不到的带上编号，至少能追问');
+});
+
+test('表情名表覆盖 NapCat 的完整清单（296 个）', async () => {
+  const { QQ_FACE_NAMES, faceName } = await import('../src/integrations/qq/faces.js');
+  assert.ok(Object.keys(QQ_FACE_NAMES).length >= 290);
+  assert.equal(faceName('178'), '斜眼笑');
+  assert.equal(faceName('nope'), undefined);
+});
+
+test('表情和文字混在一起时顺序不乱', async () => {
+  const { parseQqEvent } = await import('../src/integrations/qq/events.js');
+  const { QqConfigSchema } = await import('../src/integrations/qq/types.js');
+  const config = QqConfigSchema.parse({ selfId: '99', allowedGroups: ['123'] });
+  const event = parseQqEvent({ post_type: 'message', message_type: 'group', self_id: 99, group_id: 123,
+    user_id: 2, message_id: 1, time: 1, sender: { nickname: '牢e' },
+    message: [{ type: 'text', data: { text: '笑死' } }, { type: 'face', data: { id: 178 } }] }, config, 1)!.event;
+  assert.equal(event.text, '笑死[表情:斜眼笑]');
+});
+
+test('表情包：summary 空时不说半句话，有名字就带名字', async () => {
+  const { parseQqEvent } = await import('../src/integrations/qq/events.js');
+  const { QqConfigSchema } = await import('../src/integrations/qq/types.js');
+  const config = QqConfigSchema.parse({ selfId: '99', allowedGroups: ['123'] });
+  const parse = (data: Record<string, unknown>) => parseQqEvent({ post_type: 'message', message_type: 'group', self_id: 99,
+    group_id: 123, user_id: 2, message_id: 1, time: 1, sender: { nickname: '牢e' },
+    message: [{ type: 'mface', data }] }, config, 1)!.event.text;
+  assert.equal(parse({}), '[表情包]', '不渲染成半句话');
+  assert.equal(parse({ summary: '' }), '[表情包]');
+  assert.equal(parse({ summary: '[表情包]' }), '[表情包]', '别重复拼成 [表情包:表情包]');
+  assert.equal(parse({ summary: '笑死' }), '[表情包:笑死]');
+  assert.equal(parse({ face_name: 'doge' }), '[表情包:doge]', '有的实现用 face_name');
+});

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { qqBudget } from './budget.js';
 import type { QqState } from './ports.js';
 import type { MediaRef, QqConfig, QqEvent, Segment, Target } from './types.js';
+import { faceName } from './faces.js';
 
 const TEXT_BUDGET = 6000;
 const MEDIA_TYPES = new Set(['image', 'record', 'video', 'mface', 'marketface']);
@@ -18,7 +19,8 @@ const STRUCTURED: Record<string, string> = {
 };
 
 /** 媒体在文本里的占位：不占位的话「发来一张图」在 text 上完全看不出来。 */
-const MEDIA_LABEL: Record<string, string> = { image: '[图片]', record: '[语音]', video: '[视频]', mface: '[表情包]', marketface: '[表情包]' };
+// mface/marketface 不在这里：它们的标签由 marketFaceLabel 统一负责，否则会拼成 [表情包][表情包]。
+const MEDIA_LABEL: Record<string, string> = { image: '[图片]', record: '[语音]', video: '[视频]' };
 const MESSAGE_TYPES = new Set(['group', 'private']);
 const POST_TYPES = new Set(['message', 'notice', 'request']);
 
@@ -137,9 +139,29 @@ function applyReply(part: Segment, sink: PartSink): void {
   sink.event.parts.push({ kind: 'quote', targetId: String(part.data.id ?? '') });
 }
 
+/**
+ * QQ 自带表情：写成 `[表情:斜眼笑]` 而不是 `[QQ表情]`。
+ *
+ * 表情在群聊里常常就是一句话的意思——笑、翻白眼、无语，接梗要靠它。
+ * 只写 `[QQ表情]` 等于把这句话吞掉了。编号查不到时带上编号，至少能追问。
+ */
 function applyFace(part: Segment, sink: PartSink): void {
-  sink.event.parts.push({ kind: 'face', faceId: String(part.data.id ?? '') });
-  sink.event.text += '[QQ表情]';
+  const faceId = String(part.data.id ?? '');
+  sink.event.parts.push({ kind: 'face', faceId });
+  const name = faceName(faceId);
+  sink.event.text += name === undefined ? `[表情:${faceId}]` : `[表情:${name}]`;
+}
+
+/**
+ * 表情包的文字样子。
+ *
+ * `summary` 经常是空的或就是重复的 `[表情包]`，直接拼会得到 `[表情包：]` 这种半句话。
+ * 有名字就用名字（「笑死」这种才知道在接什么梗），没有就只说是个表情包。
+ */
+function marketFaceLabel(data: Record<string, unknown>): string {
+  const raw = [data.summary, data.face_name, data.name].find(value => typeof value === 'string' && value.trim() !== '');
+  const name = typeof raw === 'string' ? raw.replace(/^\[表情包\]/, '').trim().slice(0, 40) : '';
+  return name === '' ? '[表情包]' : `[表情包:${name}]`;
 }
 
 /** 媒体只保存引用；带签名的 URL 留在平台侧，不进记忆。 */
@@ -151,8 +173,9 @@ function applyMedia(part: Segment, index: number, sink: PartSink): void {
   sink.event.parts.push({ kind, resourceId });
   // 文本里留一个占位符：否则「发来一张图」在 text 上完全看不出来，
   // 模型只会看到一条空消息，然后答非所问。
-  sink.event.text += MEDIA_LABEL[part.type] ?? '[附件]';
-  if (part.type === 'mface' || part.type === 'marketface') sink.event.text += `[表情包：${String(part.data.summary ?? '').slice(0, 40)}]`;
+  sink.event.text += MEDIA_LABEL[part.type] ?? '';
+
+  if (part.type === 'mface' || part.type === 'marketface') sink.event.text += marketFaceLabel(part.data);
 }
 
 export function savePlatformEvent(state: QqState, event: QqEvent, media: MediaRef[]): void {
