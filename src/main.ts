@@ -24,6 +24,10 @@ import { SessionHost } from './app/bilibili-session.js';
 import { registerSelfTodoTools } from './self/todo-tools.js';
 import { SqliteSelfTodoStore } from './infrastructure/sqlite/self-todos.js';
 import { registerWebFetch } from './integrations/web-fetch.js';
+import { hotShareFromEnv } from './features/hot-share/config.js';
+import { deepSeekSearch } from './features/hot-share/search.js';
+import { HotShareWorker } from './features/hot-share/worker.js';
+import { SqliteHotShareStore } from './infrastructure/sqlite/hot-share.js';
 import { openTodos, TODO_CAP } from './self/todos.js';
 import { TodoBoard } from './integrations/bilibili/todo-board.js';
 import { SqliteTodoStore } from './infrastructure/sqlite/bilibili-todo.js';
@@ -94,6 +98,21 @@ registerSelfTodoTools(capabilities, { store: selfTodos });
 registerConversation(capabilities, agent.experience);
 capabilities.validate(config.boundaries.allowedTools, config.boundaries.allowedTools);
 runtime.start();
+// 热点分享：定时搜一个关键词，把候选交给 self 判断，不由它直接发群。
+const hotShareConfig = hotShareFromEnv(process.env);
+const hotShare = new HotShareWorker({
+  config: hotShareConfig,
+  search: deepSeekSearch({ apiKey: LLM_API_KEY }),
+  store: new SqliteHotShareStore(store),
+  timezone: process.env.BILIBILI_TZ ?? 'Asia/Shanghai',
+  log: message => console.log(`[hot_share] ${message}`),
+  offer: (offer, now) => runtime.ingest({ id: `hot-share:${offer.hit.url}`, source: 'hot_share', kind: 'hot.share',
+    data: { keyword: offer.keyword, title: offer.hit.title, url: offer.hit.url, summary: offer.hit.summary,
+      site: offer.hit.site, date: offer.hit.date, prompt: offer.prompt }, route: { type: 'self' } }, now),
+});
+if (hotShareConfig.enabled) {
+  setInterval(() => { void hotShare.tick().catch(error => console.log('[hot_share] tick 失败:', String(error))); }, 60_000).unref();
+}
 // 每小时问一次「今天还差几条」，够了就不打扰。
 setInterval(() => { try { todoBoard.remind(); } catch (error) { console.log('[bilibili] todo remind failed:', String(error)); } }, 3600_000).unref();
 for (const plugin of plugins) await plugin.start?.({ emit: event => { runtime.ingest(event); } });
