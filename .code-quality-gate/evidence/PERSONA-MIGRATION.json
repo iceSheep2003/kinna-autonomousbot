@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "id": "PERSONA-MIGRATION",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-11T11:54:10.225Z",
+    "snapshot": {
+      "contract": "e035649eaf1553939ca3eb525f979f4d1f17b29c353bacddff03260ebf574724",
+      "protected": {
+        ".code-quality-gate/tasks/PERSONA-MIGRATION.json": "3fa6e484751108e256d43400d8b850b28e8c47ccf6262a7eec917bbae04d5dda",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/persona.test.ts": "7e72294914d1c4caa1ababe509f221642f31d1ce6cc674e61eb1c501801097df",
+        "test/scene-voice.test.ts": "ca9483f220d6f12535fad3c4d77c1c4b62ad6c9d2049770d1329ad5d9037046d"
+      },
+      "code": {
+        "src/execution/scene.ts": "061359295e05ce5f2bce9408efaef0d643320606150805fe19493ff9752233dc",
+        "src/shared/persona.ts": "bd16d6691e40001d0a5c1beb2e1706ca80e6ad8894a8486558e293b99f817f3c"
+      }
+    },
+    "report": ".quality/code-quality-gate/PERSONA-MIGRATION/red-7f99e305-7c78-41b7-8516-98a0b1fbb4df.md"
+  },
+  "green": {
+    "time": "2026-11-11T11:54:16.956Z",
+    "snapshot": {
+      "contract": "e035649eaf1553939ca3eb525f979f4d1f17b29c353bacddff03260ebf574724",
+      "protected": {
+        ".code-quality-gate/tasks/PERSONA-MIGRATION.json": "3fa6e484751108e256d43400d8b850b28e8c47ccf6262a7eec917bbae04d5dda",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/persona.test.ts": "7e72294914d1c4caa1ababe509f221642f31d1ce6cc674e61eb1c501801097df",
+        "test/scene-voice.test.ts": "ca9483f220d6f12535fad3c4d77c1c4b62ad6c9d2049770d1329ad5d9037046d"
+      },
+      "code": {
+        "src/execution/scene.ts": "061359295e05ce5f2bce9408efaef0d643320606150805fe19493ff9752233dc",
+        "src/shared/persona.ts": "d387341c207be42238810a5ba289032e3a10c35b4c58fa178d5ce3802e40c3e1"
+      }
+    },
+    "report": ".quality/code-quality-gate/PERSONA-MIGRATION/green-5ed716a5-9b47-48bc-ad56-6826f342c172.md"
+  }
+}

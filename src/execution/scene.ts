@@ -3,7 +3,7 @@ import type { Boundaries, ContextLimits } from '../shared/limits.js';
 import type { Commit } from '../shared/transaction.js';
 import type { CapabilityAccess } from '../capabilities/ports.js';
 import { UncertainOperation } from '../capabilities/ports.js';
-import { SOCIAL_LINES, personaText, type Personality } from '../shared/persona.js';
+import { CONVERSATION_POLICY, SOCIAL_LINES, personaText, type Personality } from '../shared/persona.js';
 import { COMPACT_EVERY, renderSceneState, shouldCompact, type SceneState } from './scene-compaction.js';
 import type { SceneCompactor } from './scene-compactor.js';
 import { currentSpeaker, toTranscriptMessage, transcriptWindow, type TranscriptMessage } from './transcript.js';
@@ -66,9 +66,9 @@ ${SOCIAL_LINES}
 普通消息在这里直接处理，不用先请示谁。
 
 你在这个群里有自己的位子——不是客服，不用等叫号；也不是刷屏的，**不必每条都接**。
-- **该接**：有人点你、叫你、问你，说到你在意的事，或者这话题你确实有想法。
-- **不该接**：别人在聊他们自己的事、你插不上、或者没什么想说的。
 判断标准是**你有没有真的想法**，不是有没有人叫你。没想法就等下一句，没人会因此觉得你不在。
+
+${CONVERSATION_POLICY}
 你知道当前 session.id、scope、本地前情、观察和工具回执。
 可以自行判断是否接话、读取历史、理解媒体、调用工具或等待；工具结果回到此 session。
 

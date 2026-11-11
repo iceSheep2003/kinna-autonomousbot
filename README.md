@@ -300,6 +300,29 @@ cqg gate               # 最终门禁，含 TDD 证据
 
 task manifest 在 `.code-quality-gate/tasks/<ID>.json`，要列全 `testFiles` 和 `codeFiles`。
 
+### 人设与接话策略
+
+迁自线上长期调出来的两份文件（原文留在 `docs/persona-source.md`、`docs/conversation-policy-source.md`）：
+
+| 来源 | 去处 | 管什么 |
+| --- | --- | --- |
+| `persona.md`（224 行） | `PERSONA_VOICE` → scene/self 的 system prompt | **怎么说话**：身份、语气、长度、分寸、示意对话 |
+| `conversation_policy.md`（40 行） | `CONVERSATION_POLICY` → scene 指令 | **要不要接、接哪句** |
+
+几个关键约束（都是踩过坑才写进去的）：
+
+- **不固定成「先共情、再给建议」两段式**——那是客服结构，不是群友
+- **不要每条都留钩子**（"你可以先试试""要不要我再展开"），说完就停
+- **不用 Markdown**——`**加粗**`、`#`、`-` 在 QQ 里会原样显示
+- **不以提供新知识作为开口前提**——群友分享吐槽也能接
+- **被指出答错时**认下具体错误，不反复道歉、不让对方替你核查
+
+两套人设**不能同时塞**：`temper/cares/lines` 是精简版，和完整 `voice` 一起进 prompt
+会互相打架（同一件事说两遍，模型各取一半）。有 `voice` 时就以它为准。
+
+scene 的指令长度 7564 字符（约 2500 token）。它是 system prompt 里最稳定的一段，
+前缀缓存会一直命中，所以详细不亏。
+
 ### 读空气：这一轮值不值得开口
 
 借自原线上服务的启发式。核心是 **沉默便宜、误回昂贵**——错过一句俏皮话没关系，硬插一句是代价大的那个。

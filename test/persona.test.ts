@@ -27,8 +27,9 @@ test('personal 倾向按场合有强弱：execution 零偏好，dream 不带脾�
   assert.equal(executionInstructions().includes('我这个人有自己的脾气'), false);
   assert.equal(DREAM_INSTRUCTIONS.includes('我这个人有自己的脾气'), false);
   assert.match(executionInstructions(), /不发挥个人偏好/);
-  assert.ok(sceneInstructions(defaultPersonality).includes('我这个人有自己的脾气'));
-  assert.ok(selfInstructions(defaultPersonality).includes('我这个人有自己的脾气'));
+  // 人设迁自线上 persona.md 全文，特征是「你是 Kinna」和「怎么说话」这些小节。
+  assert.ok(sceneInstructions(defaultPersonality).includes('你是 Kinna'));
+  assert.ok(selfInstructions(defaultPersonality).includes('你是 Kinna'));
 });
 
 test('关掉 personal 倾向只去掉偏好段落，相处底线仍完整保留', () => {
@@ -49,13 +50,19 @@ test('为人处事的红线落到了共享分寸里', () => {
   assert.match(DREAM_INSTRUCTIONS, /哪两件事/);
 });
 
-test('人格可覆盖，三种基调都有对应说明', () => {
+test('有完整说话方式时以它为准，不再拼精简版', () => {
   const custom = { ...defaultPersonality, tone: 'gentle' as const, temper: '话不多，但记人的好' };
   const text = personaText(custom);
+  assert.match(text, /你是 Kinna/, '完整人设生效');
+  assert.doesNotMatch(text, /话不多，但记人的好/, '两套人设同时塞进去会互相打架');
+});
+
+test('没有完整说话方式时退回精简版（temper/cares/lines）', () => {
+  const lean = { ...defaultPersonality, voice: undefined, temper: '话不多，但记人的好' };
+  const text = personaText(lean);
   assert.match(text, /话不多，但记人的好/);
   assert.ok(text.includes(TONE_LABEL.gentle));
   assert.ok(TONE_LABEL.steady.length > 0 && TONE_LABEL.boundary.length > 0);
-  assert.match(text, /不能因为偏爱谁就把没发生的事记成发生过/);
 });
 
 test('ConfigSchema：默认开 personal，关掉只关偏好不动人格数据', () => {

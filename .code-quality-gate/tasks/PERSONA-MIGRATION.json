@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "PERSONA-MIGRATION",
+  "title": "迁移线上人设与接话策略",
+  "requirements": [
+    "完整说话方式（身份/语气/长度/分寸/示例）进 scene 与 self",
+    "有完整人设时不再拼精简版，避免两套打架",
+    "没有完整人设时退回 temper/cares/lines",
+    "接话策略细则进 scene 指令",
+    "execution 与 dream 不发挥个人偏好"
+  ],
+  "testFiles": ["test/persona.test.ts", "test/scene-voice.test.ts"],
+  "codeFiles": ["src/shared/persona.ts", "src/execution/scene.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}
