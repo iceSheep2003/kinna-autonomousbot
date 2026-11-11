@@ -54,6 +54,37 @@ systemctl enable qq-companion-bot && systemctl start qq-companion-bot
 
 旧 bot 的数据完整保留在 `/opt/kinna-releases/20261108-133650-memory-identity-final/data/`，**没有删除也没有迁移**。
 
+## 数据迁移（2026-11-11 完成）
+
+`scripts/migrate-legacy.py`，停服务 → 备份 → 迁 → 重启：
+
+```
+{"memories": 287, "people": 197, "relations": 3}
+service: active
+```
+
+迁了三样：
+
+| 旧 | 新 | 说明 |
+| --- | --- | --- |
+| `memories`（287） | `memories` | `user_id` → `subject_user_id`；`kind`/`revision`/`evidence` 补默认值 |
+| `people`（197） | `documents(collection='people')` | 只有昵称，画像留给 Dream 慢慢写 |
+| `relations`（3） | `documents(collection='rapport')` | `affection` → `score`，source 标 `import` |
+
+验证：`about 3485823460` 有 **63 条**（和旧库一致），`factsAbout` 能查出具体内容——
+「牢e的回复策略比较保守…」「压缩策略导致超时多次，所以记不住自己说的话」。
+
+**消息没有迁**（7907 条）：新项目靠 experience 边跑边积累，旧消息结构差异太大。
+
+### 一个遗留：索引没覆盖导入的记忆
+
+`memory.index` 只有 1 条（新库 Dream 跑出来的「初到群里」），287 条导入的记忆**没有进目录**。
+
+原因是索引由 Dream 从**经验流**提炼，不会自动把历史记忆编进去。
+
+影响有限：`factsAbout`（认人）和 `memory.search`（检索）都**不依赖索引**，只有注入时那份
+「我记得什么」的概览是空的。新对话会慢慢补上。
+
 ## 已知未做
 
 | 项 | 说明 |
