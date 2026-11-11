@@ -85,13 +85,32 @@ service: active
 影响有限：`factsAbout`（认人）和 `memory.search`（检索）都**不依赖索引**，只有注入时那份
 「我记得什么」的概览是空的。新对话会慢慢补上。
 
+## 表情包（直接复用旧目录）
+
+```bash
+QQ_MEMES_PATH=/opt/kinna-releases/20261108-133650-memory-identity-final/memes
+```
+
+旧 `catalog.json` 的两种声明（`memes` 11 条 + `packs` 1 个）本项目都支持，格式无需转换。
+
+验证：
+
+```
+标签数: 21 —— 卖萌、吃瓜、喜欢、困了、害羞、工作、开心、打call…
+挑一张: astrbot-official-01/upstream/meow/file_5724095.jpg（119KB）
+避开刚发的那张后: 换了          ← 去重逻辑在真实数据上有效
+```
+
+**注意**：路径指向旧 bot 的发布目录，将来清理 `/opt/kinna-releases` 会让它失效。
+要长期稳定就把 `memes/` 复制到 `/opt/kinna-agent/memes` 并改这一行。
+
 ## 已知未做
 
 | 项 | 说明 |
 | --- | --- |
 | **数据迁移** | 新库从零开始。旧库的 287 条记忆、7907 条消息、情绪/人物数据都没有搬过来 |
 | 图片识别 | `QQ_VISION_MODEL` 已配（用同一个模型），但没在真实群图上验证过 |
-| 表情包 | `QQ_MEMES_PATH` 没配，`send_meme` 用不了 |
+| 表情包 | ✅ 复用旧目录（见下） |
 | B 站 | 没配登录态，只能读不能写 |
 
 ## 部署时踩的坑
