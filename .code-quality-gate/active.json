@@ -1,4 +1,4 @@
 {
-  "manifest": ".code-quality-gate/tasks/AT-MENTION.json",
+  "manifest": ".code-quality-gate/tasks/READ-ROOM-2.json",
   "config": "quality.config.json"
 }

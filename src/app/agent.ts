@@ -42,6 +42,8 @@ export interface AgentOptions {
   todos?: () => import('../self/todos.js').SelfTodo[]; // 自己想做的事，注入 self 上下文
   /** 人物视图：观察消息里的人 + 渲染认识的几位。 */
   people?: import('../execution/scene.js').PeopleView;
+  /** 读空气：给场景注入「这一轮值不值得接话」。默认开，关掉只用于 A/B 对照。 */
+  room?: boolean;
   /** 打算找谁聊聊（含由头）。醒来能看到，不用先调工具。 */
   contacts?: () => { id: string; target: { type: string; id: string }; because: string; what: string }[];
   /** 能主动联系的对象。合不合适开口由心情决定，不在这里传。 */
@@ -146,6 +148,8 @@ export function composeAgent(repositories: Repositories, provider: LanguageModel
     compactor: new ModelSceneCompactor(model),
     // 人物：消息流过时顺手认人，注入时给认识的几张卡片。
     ...(options.people ? { people: options.people } : {}),
+    // 读空气：注入「这一轮值不值得接话」，模型才有依据而不是只有沉默可选。
+    room: options.room ?? true,
     // 情绪：场景在回复后写（规则算，不调模型），self 只读来决定要不要主动开口。
     affect: sceneAffect,
     requests: {

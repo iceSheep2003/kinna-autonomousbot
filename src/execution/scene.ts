@@ -7,6 +7,7 @@ import { SOCIAL_LINES, personaText, type Personality } from '../shared/persona.j
 import { COMPACT_EVERY, renderSceneState, shouldCompact, type SceneState } from './scene-compaction.js';
 import type { SceneCompactor } from './scene-compactor.js';
 import { currentSpeaker, toTranscriptMessage, transcriptWindow, type TranscriptMessage } from './transcript.js';
+import { readRoom, type RoomMessage } from './read-room.js';
 
 /** 场景需要的人物能力：观察与列出。 */
 /**
@@ -95,6 +96,8 @@ export function scopeOf(state: { environment: string; scope: Record<string, stri
 }
 
 export interface SceneDependencies {
+  /** 读空气：注入「这一轮值不值得接话」。默认开。 */
+  room?: boolean;
   repository: SceneSessionRepository;
   experience: ExperienceLog;
   subject: SubjectView;
@@ -149,6 +152,7 @@ export class SceneSessions {
   private readonly compactor?: SceneCompactor;
   private readonly people?: PeopleView;
   private readonly affect?: SceneAffect;
+  private readonly room?: boolean;
   /** 对话记录的字符预算：一条不切半，装不下的旧消息从前面掉。 */
   private readonly historyChars: number;
   constructor(deps: SceneDependencies) {
@@ -156,7 +160,7 @@ export class SceneSessions {
     this.model = deps.model; this.capabilities = deps.capabilities; this.requests = deps.requests;
     this.boundaries = deps.boundaries; this.limits = deps.limits; this.personality = deps.personality;
     this.memory = deps.memory; this.compactor = deps.compactor; this.people = deps.people;
-    this.affect = deps.affect;
+    this.affect = deps.affect; this.room = deps.room;
     this.historyChars = deps.historyChars ?? 6000;
   }
   receive(scene: SceneDescriptor, kind: string, data: unknown, now: number): void {
@@ -251,6 +255,8 @@ export class SceneSessions {
         scope: scopeOf(frame.state),
       }) } : {}),
       ...(Object.keys(speaker).length === 0 ? {} : { speaker }),
+      // 读空气：这一轮值不值得接话。给模型一个锚，别让它面对「要不要说」只能选沉默。
+
       transcript,
       recent: this.repository.recentDecisions(frame.id, this.limits.recentTurns),
       // 会变的会话状态：summary/cursor/情绪都放这里，和上面稳定的一段分开。
@@ -324,6 +330,24 @@ export class SceneSessions {
       if (this.experience.read(frame.step.through, 1, frame.source).length) this.requests.continue(frame.id, frame.now + 1000);
     };
   }
+  /**
+   * 读这一轮空气。
+   *
+   * 只算当前这几条消息的语境，不写库、不调模型——确定性启发式，
+   * 目的是让模型在「该不该说话」上有依据，而不是只有沉默可选。
+   */
+  private roomVerdict(frame: LoadFrame, transcript: readonly TranscriptMessage[]): string {
+    const latest = [...frame.observations].reverse().map(row => toTranscriptMessage(row))
+      .find(message => message?.role === 'user');
+    const text = latest?.content ?? '';
+    const verdict = readRoom({
+      text, atBot: frame.state.scope.type !== 'group', atOthers: /@(?!你)\d/.test(text),
+      hasImage: /\[图片\]/.test(text), isPrivate: frame.state.scope.type === 'private',
+      now: frame.now, recent: transcript as unknown as RoomMessage[],
+    });
+    return verdict.reason;
+  }
+
   /**
    * 这一轮聊完，把情绪记下来。
    *

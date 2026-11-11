@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "READ-ROOM",
+  "title": "读空气：这一轮值不值得开口",
+  "requirements": [
+    "私聊/@/叫名字 直接回，不打分",
+    "寒暄语气词、只有图片、叫的是别人 都不接",
+    "刚说过话要冷却；接着自己上一句权重更高",
+    "判断必须可解释（分数+信号+理由）",
+    "全部确定性，可重放"
+  ],
+  "testFiles": ["test/read-room.test.ts"],
+  "codeFiles": ["src/execution/read-room.ts", "src/execution/scene.ts", "src/execution/transcript.ts", "src/app/agent.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

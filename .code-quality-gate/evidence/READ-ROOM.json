@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "READ-ROOM",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-11T11:36:39.269Z",
+    "snapshot": {
+      "contract": "e9c1dbbc715021c69738febedc82a6274f33805142052d59976aa8facace1a18",
+      "protected": {
+        ".code-quality-gate/tasks/READ-ROOM.json": "07ad3eb696d973b4846ebcdea7f8b599462a45f7e26b06a6cca82470a3247614",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/read-room.test.ts": "6ce7bcf274c54354dc655b1997d7189adeda2dd7ad998a7cb7446f140e51a5a7"
+      },
+      "code": {
+        "src/app/agent.ts": "5c2db2b9db4f406fbda99ed09cb9f648ea37b2d36c4a3989e323efddd41c9427",
+        "src/execution/read-room.ts": "92e38d54b7b5df414472ef56253ddfbe762af296116a1350a3aba686d5437269",
+        "src/execution/scene.ts": "544b372276517c9b76f69699fccebf62a866c4455d1c85b54a7bf3bab799648e",
+        "src/execution/transcript.ts": "2f487be2a93182cc72643ad5e2beb29fd3a69de55d670d68a2735f3612b72627"
+      }
+    },
+    "report": ".quality/code-quality-gate/READ-ROOM/red-956cfa50-e67e-43f1-8771-a5592ab8ce1d.md"
+  },
+  "green": {
+    "time": "2026-11-11T11:36:52.229Z",
+    "snapshot": {
+      "contract": "e9c1dbbc715021c69738febedc82a6274f33805142052d59976aa8facace1a18",
+      "protected": {
+        ".code-quality-gate/tasks/READ-ROOM.json": "07ad3eb696d973b4846ebcdea7f8b599462a45f7e26b06a6cca82470a3247614",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/read-room.test.ts": "6ce7bcf274c54354dc655b1997d7189adeda2dd7ad998a7cb7446f140e51a5a7"
+      },
+      "code": {
+        "src/app/agent.ts": "5c2db2b9db4f406fbda99ed09cb9f648ea37b2d36c4a3989e323efddd41c9427",
+        "src/execution/read-room.ts": "b6afb12abfdd86915317522f13f3de4f9916d35651a1c3ef4c2bc2cbfe3c91d0",
+        "src/execution/scene.ts": "544b372276517c9b76f69699fccebf62a866c4455d1c85b54a7bf3bab799648e",
+        "src/execution/transcript.ts": "2f487be2a93182cc72643ad5e2beb29fd3a69de55d670d68a2735f3612b72627"
+      }
+    },
+    "report": ".quality/code-quality-gate/READ-ROOM/green-5222e626-fbbe-40f1-bf94-a6280831f610.md"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "READ-ROOM-2",
+  "title": "读空气：热聊机会不能被刷屏惩罚抵消",
+  "requirements": [
+    "私聊/@/叫名字 直接回",
+    "寒暄语气词、只有图片、叫的是别人 都不接",
+    "刚说过话要冷却；接着自己上一句权重更高",
+    "热聊里的实质内容/开放问题算机会，此时不再算刷屏",
+    "判断必须可解释，全部确定性"
+  ],
+  "testFiles": ["test/read-room.test.ts"],
+  "codeFiles": ["src/execution/read-room.ts", "src/execution/scene.ts", "src/execution/transcript.ts", "src/app/agent.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

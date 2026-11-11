@@ -19,6 +19,8 @@ import type { Experience } from '../memory/types.js';
 export interface TranscriptMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** 这条消息的时间。读空气要它算冷却、刷屏和「刚参与过」。 */
+  at?: number;
   /**
    * 对应的经验流水序号。
    *
@@ -98,7 +100,9 @@ export function toTranscriptMessage(row: Experience): TranscriptMessage | undefi
   // 写死之后场景的对话记录会是空的，表现就是「完全不记得群友说过什么」。
   const message = isInboundKind(row.kind) ? inbound(data) : row.kind === 'tool.result' ? outbound(data) : undefined;
   if (message === undefined) return undefined;
-  return isInboundKind(row.kind) ? { ...message, seq: row.seq, ...whoSaid(data) } : { ...message, seq: row.seq };
+  return isInboundKind(row.kind)
+    ? { ...message, seq: row.seq, at: row.at, ...whoSaid(data) }
+    : { ...message, seq: row.seq, at: row.at };
 }
 
 /** 入站：昵称拼进内容，让「谁说的」成为内容的一部分而不是要模型去解结构。 */
