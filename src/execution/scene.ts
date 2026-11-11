@@ -81,6 +81,17 @@ reflect 只通知长期 self，不直接修改主体目标、身份或情绪。�
 }
 
 /**
+ * 原文窗口：最近 5 分钟的实际对话。
+ *
+ * 线上用的是同一个值。群聊 5 分钟通常够看清「谁在跟谁说话」；
+ * 更早的由压缩快照接上，再往前靠记忆检索——三层各管一段，不重叠也不断档。
+ */
+export const LIVE_WINDOW_MS = 300_000;
+
+/** 一次最多读多少条历史。5 分钟内一般几十条，这是防爆的兜底。 */
+export const HISTORY_MESSAGES = 240;
+
+/**
  * 场景的索引作用域：qq 场景按群（group:xxx），其它按功能（feature:环境）。
  * 与记忆 scope 用同一套写法，索引和记忆才对得上。
  */
@@ -235,7 +246,7 @@ export class SceneSessions {
     const query = JSON.stringify(frame.observations).slice(0, 3000);
     // 对话记录：格式化后的「谁说了什么」。原始经验里昵称是嵌套字段，
     // 自己说的话只剩回执——不投影的话模型既认不出人，也想不起自己说过什么。
-    const transcript = transcriptWindow(frame.observations, this.historyChars);
+    const transcript = this.history(frame, transcriptWindow(frame.observations, this.historyChars));
     // 当前说话人 + 关于他的事实：按 QQ 号取，不靠检索碰运气。
     // 这是「记住群友是谁、记得他说过什么」真正生效的地方。
     const speaker = this.speakerContext(frame, transcript);
@@ -336,6 +347,27 @@ export class SceneSessions {
    * 只算当前这几条消息的语境，不写库、不调模型——确定性启发式，
    * 目的是让模型在「该不该说话」上有依据，而不是只有沉默可选。
    */
+  /**
+   * 这一段对话的原文。
+   *
+   * 和压缩用**同一个游标**（`compactedThrough`）衔接：
+   * 游标之前的已经压成 `earlier`，游标之后的才是原文，所以既不重复也不断档。
+   *
+   * 之前这里读的是 `observations`（本轮新增），群里每轮来一条消息就只看到一条——
+   * 模型不知道刚才在聊什么，回出来的话自然没有指向性。
+   */
+  private history(frame: LoadFrame, fallback: readonly TranscriptMessage[]): TranscriptMessage[] {
+    const current = [...frame.observations].reverse()
+      .map(row => toTranscriptMessage(row))
+      .find(message => message?.role === 'user')?.seq;
+    const rows = this.experience.read(frame.state.compactedThrough ?? 0, HISTORY_MESSAGES, frame.source)
+      // 当前这条单独作为「这一轮要处理什么」，混进历史会让模型以为它已经说过了。
+      .filter(row => row.seq !== current)
+      .filter(row => frame.now - row.at <= LIVE_WINDOW_MS);
+    // 一条都没读到（刚开的新场）时退回本轮观察，至少不至于空着。
+    return rows.length === 0 ? [...fallback] : transcriptWindow(rows, this.historyChars);
+  }
+
   private roomVerdict(frame: LoadFrame, transcript: readonly TranscriptMessage[]): string {
     const latest = [...frame.observations].reverse().map(row => toTranscriptMessage(row))
       .find(message => message?.role === 'user');

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "SCENE-HISTORY-3",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-11T12:33:47.828Z",
+    "snapshot": {
+      "contract": "dc0045d9a29c74ded52093ebb4c30993f5292a326258a5077d01621b98f8a67b",
+      "protected": {
+        ".code-quality-gate/tasks/SCENE-HISTORY-3.json": "bbbd74f335178977bb8857ecb8886e0bb38a962df773cd8a6f2739407e3e39e2",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/scene-history.test.ts": "453338bcfc504b0dd461819622f06113beca329acfc8a7c0097357753ec5ff52"
+      },
+      "code": {
+        "src/execution/scene.ts": "0e38f38513a9dbc4af34d6f0c852923a963c6e15b43082cfb3f706bc0ed52381"
+      }
+    },
+    "report": ".quality/code-quality-gate/SCENE-HISTORY-3/red-b2f9e0fb-0be7-4291-82a3-5083ec247fcd.md"
+  },
+  "green": {
+    "time": "2026-11-11T12:33:55.145Z",
+    "snapshot": {
+      "contract": "dc0045d9a29c74ded52093ebb4c30993f5292a326258a5077d01621b98f8a67b",
+      "protected": {
+        ".code-quality-gate/tasks/SCENE-HISTORY-3.json": "bbbd74f335178977bb8857ecb8886e0bb38a962df773cd8a6f2739407e3e39e2",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/scene-history.test.ts": "453338bcfc504b0dd461819622f06113beca329acfc8a7c0097357753ec5ff52"
+      },
+      "code": {
+        "src/execution/scene.ts": "c826d9d3181e954ed4e68a4c6800d64406b971187a0c042506402ed27367dee2"
+      }
+    },
+    "report": ".quality/code-quality-gate/SCENE-HISTORY-3/green-c9804446-982d-4f51-b107-e351a7a0734c.md"
+  }
+}

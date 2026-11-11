@@ -1,4 +1,4 @@
 {
-  "manifest": ".code-quality-gate/tasks/PERSONA-MIGRATION.json",
+  "manifest": ".code-quality-gate/tasks/SCENE-HISTORY-3.json",
   "config": "quality.config.json"
 }

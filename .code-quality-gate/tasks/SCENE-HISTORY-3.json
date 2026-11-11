@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "SCENE-HISTORY-3",
+  "title": "场景对话历史三层：原文 5 分钟 + 快照 + 记忆",
+  "requirements": [
+    "模型看到最近几分钟的对话，不是孤立一条",
+    "超出 5 分钟窗口的原文不进上下文",
+    "当前这条不混进历史"
+  ],
+  "testFiles": ["test/scene-history.test.ts"],
+  "codeFiles": ["src/execution/scene.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

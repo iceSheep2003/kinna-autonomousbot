@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "SCENE-HISTORY",
+  "title": "场景对话历史：原文 5 分钟 + 快照 + 记忆三层",
+  "requirements": [
+    "transcript 从 experience 读历史，不是本轮 observations",
+    "原文窗口 5 分钟，和快照分开",
+    "排除当前这条消息",
+    "压缩游标之前的不再读原文"
+  ],
+  "testFiles": ["test/scene-history.test.ts"],
+  "codeFiles": ["src/execution/scene.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}
