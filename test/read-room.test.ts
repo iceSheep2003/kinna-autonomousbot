@@ -12,7 +12,13 @@ import { readRoom, DEFAULT_ROOM } from '../src/execution/read-room.js';
  * 只能选最安全的沉默。把空气读出来给它，它才有话可说。
  */
 
-const base = { text: '在吗', atBot: false, atOthers: false, hasImage: false, isPrivate: false, now: 1_000_000, recent: [] as never[] };
+// random 固定成 0：判定改成概率之后，测试要能重放。
+// 这不是把行为拉回硬阈值——概率曲线的测试在 room-variety.test.ts 里。
+// random 默认给 0.999：判定改成概率之后，默认「运气很差」——只有该接的才显式给 0。
+// 这样测试断言的是「分数够不够」，不是「运气好不好」。
+const base = { text: '在吗', atBot: false, atOthers: false, hasImage: false, isPrivate: false,
+  now: 1_000_000, recent: [] as never[], random: () => 0.999 };
+const lucky = { random: () => 0 };
 
 test('私聊直接回，不是判断题', () => {
   assert.equal(readRoom({ ...base, isPrivate: true }).reply, true);
@@ -47,7 +53,7 @@ test('有人在认真提问，能累积到阈值', () => {
 
 test('接着自己上一句往下问，权重更高', () => {
   const recent = [{ role: 'assistant', content: '校企合作要看清条款', at: 999_000 }] as never[];
-  const v = readRoom({ ...base, text: '那具体看哪些条款？', recent });
+  const v = readRoom({ ...base, ...lucky, text: '那具体看哪些条款？', recent });
   assert.equal(v.reply, true, `接着自己的话该接，实际 score=${v.score}`);
 });
 
@@ -75,6 +81,6 @@ test('热聊里说实质内容值得插一句——「人多所以有话说」�
     { role: 'user', content: '学费多少', at: now - 10_000, userId: 'c' },
     { role: 'user', content: '不清楚', at: now - 8_000, userId: 'd' },
   ] as never[];
-  const v = readRoom({ ...base, text: '我觉得保研这事得看导师方向对不对', now, recent });
+  const v = readRoom({ ...base, ...lucky, text: '我觉得保研这事得看导师方向对不对', now, recent });
   assert.equal(v.reply, true, `热聊机会该成立，实际 score=${v.score} signals=${v.signals.join(',')}`);
 });

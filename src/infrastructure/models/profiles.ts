@@ -26,7 +26,9 @@ export const defaultProfiles: Record<ModelRole, ModelProfile> = {
   // 有界执行的局部步骤：选工具、填参数、判断完成，不需要长思维链，要稳。
   execution: { thinking: 'disabled', temperature: 0.3, presencePenalty: 0.2, maxTokens: 2_000, timeoutMs: 30_000 },
   // 群里的日常交流：要快、要自然、要有活人味。关思考后 temperature 才真正生效。
-  scene: { thinking: 'disabled', temperature: 0.85, presencePenalty: 0.4, maxTokens: 1_500, timeoutMs: 25_000 },
+  // 温度给到 1.0：更松的用词和句式，同一句话不会每次都一个腔调；
+  // 用 presencePenalty 压住「反复说同一件事」的倾向，而不是靠降温。
+  scene: { thinking: 'disabled', temperature: 1, presencePenalty: 0.4, maxTokens: 1_500, timeoutMs: 25_000 },
 };
 
 const ROLES: ModelRole[] = ['self', 'dream', 'execution', 'scene'];

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "ROOM-VARIETY",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-11T11:41:29.395Z",
+    "snapshot": {
+      "contract": "6c8b6566b76f4384d60c63179c5ee7c266229a3d3658cfee773762c16a95f6f3",
+      "protected": {
+        ".code-quality-gate/tasks/ROOM-VARIETY.json": "ea18c170b31411f5d6b8456a8504df03cf960161dde76ca117728fc33390b03d",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/profiles.test.ts": "3bbf1780b494b07631cfd4ca52b3973a45291afd014ebc019d605a812dd8d71e",
+        "test/read-room.test.ts": "20050f71481dc5f0848ece463826a9bb5a46826940fcfc4e23ba5ebd08cf99b9",
+        "test/room-variety.test.ts": "eef72207490e9d617a42ef61899eb4f3c9aea906f6cf09396cb2786feda3e1fa"
+      },
+      "code": {
+        "src/execution/read-room.ts": "633dc089174c2029e35a89b789b4485171b08255149780d46d2b446258e2048d",
+        "src/infrastructure/models/profiles.ts": "d5c1bb320e743a79b1bbe2013c436bfc60019530df29945f8876be4b80c1a377"
+      }
+    },
+    "report": ".quality/code-quality-gate/ROOM-VARIETY/red-b8c5a081-6794-4d47-85f6-e9605174d5d6.md"
+  },
+  "green": {
+    "time": "2026-11-11T11:41:36.244Z",
+    "snapshot": {
+      "contract": "6c8b6566b76f4384d60c63179c5ee7c266229a3d3658cfee773762c16a95f6f3",
+      "protected": {
+        ".code-quality-gate/tasks/ROOM-VARIETY.json": "ea18c170b31411f5d6b8456a8504df03cf960161dde76ca117728fc33390b03d",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/profiles.test.ts": "3bbf1780b494b07631cfd4ca52b3973a45291afd014ebc019d605a812dd8d71e",
+        "test/read-room.test.ts": "20050f71481dc5f0848ece463826a9bb5a46826940fcfc4e23ba5ebd08cf99b9",
+        "test/room-variety.test.ts": "eef72207490e9d617a42ef61899eb4f3c9aea906f6cf09396cb2786feda3e1fa"
+      },
+      "code": {
+        "src/execution/read-room.ts": "c5e3222f9d2b06d094946b4645d8c6db810ec1634269bdaf764379f21485908d",
+        "src/infrastructure/models/profiles.ts": "d5c1bb320e743a79b1bbe2013c436bfc60019530df29945f8876be4b80c1a377"
+      }
+    },
+    "report": ".quality/code-quality-gate/ROOM-VARIETY/green-eddcec70-27ec-4752-8572-bb17fd1d3040.md"
+  }
+}

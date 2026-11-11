@@ -98,7 +98,8 @@ test('HTTP body：scene 关思考、带温度与 presence_penalty，不发 top_p
     await model.decide({ role: 'scene', instructions: 'i', context: {}, schema });
     const body = c.bodies[0]!;
     assert.deepEqual(body.thinking, { type: 'disabled' });
-    assert.equal(body.temperature, 0.85);
+    // 跟随配置而不是写死数值：调温度不该让这条测试变红。
+    assert.equal(body.temperature, defaultProfiles.scene.temperature);
     assert.equal(body.presence_penalty, 0.4);
     assert.equal(body.top_p, undefined);
     assert.equal(body.reasoning_effort, undefined);

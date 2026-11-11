@@ -24,11 +24,18 @@ export interface RoomConfig {
   crowdSpeakers: number;
   /** 被叫到这些名字，等于被点名。 */
   botNames: readonly string[];
+  /**
+   * 概率曲线的陡峭程度。
+   *
+   * 越大越接近硬阈值（要么必说要么必不说），越小越随机。
+   * 6 大约意味着「离开阈值 0.5 分就算比较确定」。
+   */
+  steepness: number;
 }
 
 export const DEFAULT_ROOM: RoomConfig = {
   threshold: 0.5, cooldownMs: 20_000, engagedMs: 600_000,
-  burstMs: 20_000, burstCount: 5, crowdSpeakers: 3, botNames: [],
+  burstMs: 20_000, burstCount: 5, crowdSpeakers: 3, botNames: [], steepness: 6,
 };
 
 export interface RoomMessage {
@@ -38,10 +45,14 @@ export interface RoomMessage {
 export interface RoomInput {
   text: string; atBot: boolean; atOthers: boolean; hasImage: boolean; isPrivate: boolean;
   now: number; recent: readonly RoomMessage[];
+  /** 随机源；不传用 Math.random。测试传固定值就能重放同一个决定。 */
+  random?: () => number;
 }
 
 export interface RoomVerdict {
   reply: boolean; score: number; reason: string; signals: string[];
+  /** 这个分数下的开口概率；调参时看它比看布尔值有用。 */
+  probability: number;
 }
 
 /** 寒暄、笑声、语气词。群友之间天天这样，每条都接就成壁纸了。 */
@@ -91,10 +102,11 @@ function crowd(recent: readonly RoomMessage[], config: RoomConfig): boolean {
  */
 /** 直接对话（私聊 / 被 @ / 被叫名字）不参与打分——那不是判断题。 */
 function directVerdict(input: RoomInput, config: RoomConfig): RoomVerdict | undefined {
-  if (input.isPrivate) return { reply: true, score: 1, reason: '私聊：直接回复', signals: [] };
-  if (input.atBot) return { reply: true, score: 1, reason: '被 @ 了', signals: [] };
+  if (input.isPrivate) return { reply: true, score: 1, probability: 1, reason: '私聊：直接回复', signals: [] };
+  if (input.atBot) return { reply: true, score: 1, probability: 1, reason: '被 @ 了', signals: [] };
   const named = config.botNames.find(name => name !== '' && input.text.includes(name));
-  return named === undefined ? undefined : { reply: true, score: 1, reason: `正文点了名字（${named}）`, signals: [] };
+  return named === undefined ? undefined
+    : { reply: true, score: 1, probability: 1, reason: `正文点了名字（${named}）`, signals: [] };
 }
 
 /** 时间相关的信号：冷却、参与窗口、接着上一句。 */
@@ -152,7 +164,17 @@ function noiseSignals(input: RoomInput, config: RoomConfig, add: (delta: number,
   else if (crowd(input.recent, config)) add(-0.2, '人多');
 }
 
-/** 读这一轮空气；够阈值才开口。 */
+/**
+ * 分数映射成开口概率。
+ *
+ * 用 logistic 而不是硬阈值：同样的分数也会有时说有时不说，几十次之后才不像机器。
+ * 但「分数越高越可能开口」这个语义保住了，所以调 `threshold` / `steepness` 仍然有意义。
+ */
+export function replyProbability(score: number, config: RoomConfig): number {
+  return 1 / (1 + Math.exp(-(score - config.threshold) * config.steepness));
+}
+
+/** 读这一轮空气；按概率决定开不开口。 */
 export function readRoom(input: RoomInput, config: RoomConfig = DEFAULT_ROOM): RoomVerdict {
   const direct = directVerdict(input, config);
   if (direct !== undefined) return direct;
@@ -167,8 +189,10 @@ export function readRoom(input: RoomInput, config: RoomConfig = DEFAULT_ROOM): R
   const continues = timingSignals(input, config, add);
   contentSignals(input, config, add, continues);
 
-  const reply = score >= config.threshold;
+  const probability = replyProbability(score, config);
+  // 直接对话在上面已经返回；走到这里都按概率，避免同样场面永远同样决定。
+  const reply = (input.random ?? Math.random)() < probability;
   const detail = signals.length === 0 ? '没有任何值得接话的信号' : signals.join('；');
-  return { reply, score: Number(score.toFixed(3)),
-    reason: `${reply ? '开口' : '沉默'}（${score.toFixed(2)}/${config.threshold}）：${detail}`, signals };
+  return { reply, score: Number(score.toFixed(3)), probability: Number(probability.toFixed(3)),
+    reason: `${reply ? '开口' : '沉默'}（${score.toFixed(2)}，概率 ${(probability * 100).toFixed(0)}%）：${detail}`, signals };
 }

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "ROOM-VARIETY",
+  "title": "读空气改成概率：同样场面也会有时说有时不说",
+  "requirements": [
+    "分数越高开口概率越大，等于阈值时是一半",
+    "注入固定随机源可复现",
+    "直接对话永远回复，不受随机影响",
+    "steepness 可调，越大越接近硬阈值",
+    "scene 温度提到 1.0"
+  ],
+  "testFiles": ["test/room-variety.test.ts", "test/read-room.test.ts", "test/profiles.test.ts"],
+  "codeFiles": ["src/execution/read-room.ts", "src/infrastructure/models/profiles.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}
