@@ -34,14 +34,19 @@ export function allowedTarget(config: QqConfig, target: Target): void {
 
 /** 事件信封：先把“是谁、在哪个会话、什么事件”定下来，再解析消息片段。 */
 interface Envelope { target: Target; groupId?: string; userId: string; messageId?: string; id: string; kind: string }
-interface PartSink { event: QqEvent; media: MediaRef[]; target: Target; id: string; budget: { text: number } }
+interface PartSink {
+  event: QqEvent; media: MediaRef[]; target: Target; id: string; budget: { text: number };
+  /** bot 自己的 QQ 号：判断 @ 的是不是自己。 */
+  selfId?: string;
+}
 
 export function parseQqEvent(raw: Record<string, unknown>, config: QqConfig, now: number): { event: QqEvent; media: MediaRef[] } | undefined {
   const envelope = readEnvelope(raw, config);
   if (!envelope) return;
   const event = baseEvent(raw, config, envelope, now);
   const media: MediaRef[] = [];
-  fillParts(raw, { event, media, target: envelope.target, id: envelope.id, budget: { text: TEXT_BUDGET } });
+  fillParts(raw, { event, media, target: envelope.target, id: envelope.id,
+    budget: { text: TEXT_BUDGET }, selfId: config.selfId });
   event.text = event.text.slice(0, TEXT_BUDGET);
   event.atBot = event.atUsers.includes(config.selfId);
   return { event, media };
@@ -128,10 +133,28 @@ function applyText(part: Segment, sink: PartSink): void {
   if (text) sink.event.parts.push({ kind: 'text', text });
 }
 
+/**
+ * @ 必须写进文本。
+ *
+ * 只记进 atUsers 的话，模型看到的是一条普通消息——它不知道有人点了它，
+ * 于是判断「没人叫我」而选择沉默。线上就是这样变成哑巴的。
+ *
+ * @ 自己写成 `@你`（模型眼里只有「你」这个视角）；@全体单独表示，不算点个人。
+ */
 function applyAt(part: Segment, sink: PartSink): void {
   const targetId = String(part.data.qq ?? '');
   sink.event.atUsers.push(targetId);
+  if (targetId === 'all') {
+    sink.event.text += '@全体成员';
+  } else {
+    sink.event.text += isSelf(targetId, sink) ? '@你' : `@${targetId}`;
+  }
   sink.event.parts.push({ kind: 'at', targetId });
+}
+
+/** 这个 id 是不是 bot 自己。由 parseQqEvent 在构建时注入。 */
+function isSelf(targetId: string, sink: PartSink): boolean {
+  return sink.selfId !== undefined && targetId === sink.selfId;
 }
 
 function applyReply(part: Segment, sink: PartSink): void {

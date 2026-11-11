@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "SCENE-VOICE",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-11T11:27:35.770Z",
+    "snapshot": {
+      "contract": "a1f467ea8d2c29f72b6abe407fcace32f1b76f30e7f69975acdf47ea0aacc7ff",
+      "protected": {
+        ".code-quality-gate/tasks/SCENE-VOICE.json": "6b272530895965cd9c60ef242710b3782b470a59f96fa20a76008bf657c14eca",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/scene-voice.test.ts": "c09a49b102caeeb5db66a8c1c436e3757b09ba0c6ab76d151284bad1c88afa87"
+      },
+      "code": {
+        "src/execution/scene.ts": "b5b2d03882ec88b4dafe97daf44dcbf0535ab6fa40745b2464e12e659c504de8"
+      }
+    },
+    "report": ".quality/code-quality-gate/SCENE-VOICE/red-f0fe3a0b-b9c4-4f65-b9ec-4e4a3ec17ff6.md"
+  },
+  "green": {
+    "time": "2026-11-11T11:27:51.907Z",
+    "snapshot": {
+      "contract": "a1f467ea8d2c29f72b6abe407fcace32f1b76f30e7f69975acdf47ea0aacc7ff",
+      "protected": {
+        ".code-quality-gate/tasks/SCENE-VOICE.json": "6b272530895965cd9c60ef242710b3782b470a59f96fa20a76008bf657c14eca",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/scene-voice.test.ts": "c09a49b102caeeb5db66a8c1c436e3757b09ba0c6ab76d151284bad1c88afa87"
+      },
+      "code": {
+        "src/execution/scene.ts": "21de86651807c3fbbeb8a34348294ddc5ea65d3386e332bc45df26efc547140b"
+      }
+    },
+    "report": ".quality/code-quality-gate/SCENE-VOICE/green-d2a4ee7c-3319-4cb9-af63-449229da0c5f.md"
+  }
+}

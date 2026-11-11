@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "AT-MENTION",
+  "title": "@ 必须出现在文本里——模型要能看见自己被点了",
+  "requirements": [
+    "@ 自己写成 @你",
+    "@ 别人保留 id，不能写成 @你",
+    "@全体成员 单独表示",
+    "只有 @ 没有文字也算一条消息"
+  ],
+  "testFiles": ["test/at-mention.test.ts"],
+  "codeFiles": ["src/integrations/qq/events.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

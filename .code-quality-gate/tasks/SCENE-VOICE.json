@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "SCENE-VOICE",
+  "title": "群聊说话分寸：给出接话与不接的判据，别只给沉默许可",
+  "requirements": [
+    "被点名/被问要接",
+    "别人互相聊、没你的事不接",
+    "判断依据是有没有真想法，不是有没有人叫",
+    "不能变成每条都接"
+  ],
+  "testFiles": ["test/scene-voice.test.ts"],
+  "codeFiles": ["src/execution/scene.ts"],
+  "testChecks": ["acceptance"],
+  "maxAttempts": 12
+}

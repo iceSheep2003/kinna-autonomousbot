@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "AT-MENTION",
+  "attempts": 1,
+  "red": {
+    "time": "2026-11-11T11:28:37.497Z",
+    "snapshot": {
+      "contract": "a91db7a2cf416d5461b26e686d18390d779080b83f7b478f176dfaea14b22466",
+      "protected": {
+        ".code-quality-gate/tasks/AT-MENTION.json": "109c3b698390bebfb792d26ab8c9d698d4913e77eb6fc37b39cb2dac5182dfd3",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/at-mention.test.ts": "31754aa61cf8c75d237ef0ed3ddb616dafb06c12ae81dd465234d44d939349e5"
+      },
+      "code": {
+        "src/integrations/qq/events.ts": "b3c81c42ede5b10b7a4a23e14a3adb02b5a4cbb4cd8145702c3f9ad581624e9f"
+      }
+    },
+    "report": ".quality/code-quality-gate/AT-MENTION/red-963e13ff-6a72-49c5-a0bd-693d6ac8e14a.md"
+  },
+  "green": {
+    "time": "2026-11-11T11:29:00.314Z",
+    "snapshot": {
+      "contract": "a91db7a2cf416d5461b26e686d18390d779080b83f7b478f176dfaea14b22466",
+      "protected": {
+        ".code-quality-gate/tasks/AT-MENTION.json": "109c3b698390bebfb792d26ab8c9d698d4913e77eb6fc37b39cb2dac5182dfd3",
+        "quality.config.json": "39c95784353ed3fe44a221a3f18949551ab87ce94dccc8e5429245f3175b3374",
+        "test/at-mention.test.ts": "31754aa61cf8c75d237ef0ed3ddb616dafb06c12ae81dd465234d44d939349e5"
+      },
+      "code": {
+        "src/integrations/qq/events.ts": "3e0fe000bbdcbf9e385b2aa98f126779eb09fb15c3acbc2d138f44d46844a136"
+      }
+    },
+    "report": ".quality/code-quality-gate/AT-MENTION/green-a46b7433-4ea4-42a3-85b2-80e247758da2.md"
+  }
+}
