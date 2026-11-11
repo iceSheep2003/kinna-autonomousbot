@@ -116,7 +116,18 @@ registerSelfTodoTools(capabilities, { store: selfTodos });
 // 主动找人：先记计划（含由头），做过之后写结果。
 registerContactTools(capabilities, { store: contacts });
 registerConversation(capabilities, agent.experience);
-capabilities.validate(config.boundaries.allowedTools, config.boundaries.allowedTools);
+// 白名单里可能写了这个环境没启用的工具（B 站没登录、没配搜索 key）。
+// 裁成实际可用的，并把跳过的打出来——启动不该因为「多写了一个」就崩。
+const narrowed = capabilities.narrow(config.boundaries.allowedTools);
+if (narrowed.skipped.length > 0) {
+  process.stderr.write(`[boundaries] 跳过未启用的工具：${narrowed.skipped.join(', ')}\n`);
+}
+config.boundaries.allowedTools = narrowed.usable;
+// 白名单空了等于模型手无寸铁：能想、能说，但一个工具都没有。
+// 线上「@ 了不回复」就是这个——默认白名单里一个 qq 工具都没有。
+if (narrowed.usable.length === 0) {
+  process.stderr.write('[boundaries] 警告：可用工具为空，模型将无法发消息或调用任何能力。检查 boundaries.allowedTools。\n');
+}
 runtime.start();
 // 热点分享：定时搜一个关键词，把候选交给 self 判断，不由它直接发群。
 const hotShareConfig = hotShareFromEnv(process.env);

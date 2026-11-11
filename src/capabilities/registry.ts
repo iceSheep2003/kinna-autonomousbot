@@ -14,6 +14,26 @@ export class CapabilityRegistry implements CapabilityAccess {
   catalog(allowed: string[]) {
     return [...this.tools.values()].filter(t => allowed.includes(t.name)).map(t => ({ name: t.name, description: t.description, effect: t.effect, inputSchema: z.toJSONSchema(t.input, { io: 'input' }) }));
   }
+  /** 已注册的工具名。装配层用它把白名单裁成「这个环境真的能用」的那部分。 */
+  available(): string[] { return [...this.tools.keys()]; }
+
+  /**
+   * 把配置里的白名单裁成实际可用的。
+   *
+   * 为什么要裁而不是报错：能不能注册取决于环境变量（B 站没登录态就没有 bilibili.*，
+   * 没配 BRAVE_API_KEY 就没有 web.search）。让部署配置写全、启动时自动跳过没启用的，
+   * 比「少写一个就崩」实用得多——但那正是线上起不来的原因。
+   *
+   * 被跳过的会被调用方记进日志，所以拼写错误仍然看得见。
+   */
+  narrow(allowed: string[]): { usable: string[]; skipped: string[] } {
+    const known = new Set(this.tools.keys());
+    return {
+      usable: allowed.filter(name => known.has(name)),
+      skipped: allowed.filter(name => !known.has(name)),
+    };
+  }
+
   validate(names: string[], allowed: string[]): void {
     for (const name of names) {
       if (!allowed.includes(name) || !this.tools.has(name)) throw new Error(`Capability unavailable: ${name}`);

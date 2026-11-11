@@ -110,6 +110,29 @@ QQ_MEMES_PATH=/opt/kinna-agent/memes
 标签数: 21 | 挑图成功: astrbot-official-01/upstream/meow/file_5446957.jpg (77KB)
 ```
 
+## 事故记录：@ 了不回复（2026-11-11 20:04 修复）
+
+**不是回复概率的问题**——`@` 在读空气里走「直接回复」分支，概率是 1.0，跟打分无关。
+
+真正原因是**白名单里一个 `qq.*` 工具都没有**：
+
+```
+默认 boundaries.allowedTools = ['memory.search', 'memory.expand', 'memory.promote',
+                                'experience.read', 'self.note', 'group.say']
+```
+
+`group.say` 是旧的内置名，实际不存在。所以场景的 `capabilities` 是空数组——
+模型能想、能说，但**没有发消息的工具**，只能选 `wait`。
+
+修复三层：
+
+1. **配置补全**：`agent.qq.json` 加上全部 32 个工具（含 `qq.send_message`）
+2. **启动自动裁剪**：白名单里写了这个环境没启用的工具（B 站没登录态 → `bilibili.*`，
+   没配 `BRAVE_API_KEY` → `web.search`），启动时跳过并打印，而不是崩溃
+3. **空白名单告警**：裁完为空时打警告——那等于模型手无寸铁
+
+代价是「多写一个工具」不再报错。用日志里的 `[boundaries] 跳过未启用的工具：...` 兜住。
+
 ## 已知未做
 
 | 项 | 说明 |

@@ -1,16 +1,52 @@
 {
   "qq": {
-    "selfId": "123456789",
+    "selfId": "填你的机器人QQ号",
     "host": "127.0.0.1",
-    "port": 6199,
-    "allowedGroups": ["987654321"],
+    "port": 6201,
+    "allowedGroups": [
+      "群号1"
+    ],
     "privateEnabled": false,
     "allowedPrivateUsers": [],
     "ambientMessages": "session",
-    "operatorIds": ["111111111"],
-    "titleEnabled": true,
-    "welcomeEnabled": true,
-    "maxTextParts": 6,
-    "textPartChars": 500
+    "operatorIds": [
+      "你的QQ号"
+    ]
+  },
+  "boundaries": {
+    "allowedTools": [
+      "bilibili.comments",
+      "bilibili.delete_post",
+      "bilibili.discover",
+      "bilibili.draft_comment",
+      "bilibili.draft_dynamic",
+      "bilibili.quotas",
+      "bilibili.search",
+      "bilibili.todo",
+      "bilibili.todo_claim",
+      "bilibili.todo_done",
+      "bilibili.todo_skip",
+      "bilibili.video",
+      "experience.read",
+      "memory.expand",
+      "memory.promote",
+      "memory.search",
+      "qq.environment",
+      "qq.get_message",
+      "qq.group_info",
+      "qq.group_members",
+      "qq.history",
+      "qq.send_message",
+      "self.contact_done",
+      "self.contact_drop",
+      "self.contact_list",
+      "self.contact_plan",
+      "self.note",
+      "self.todo_add",
+      "self.todo_close",
+      "self.todo_list",
+      "web.fetch",
+      "web.search"
+    ]
   }
 }
