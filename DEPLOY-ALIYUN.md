@@ -88,8 +88,11 @@ service: active
 ## 表情包（直接复用旧目录）
 
 ```bash
-QQ_MEMES_PATH=/opt/kinna-releases/20261108-133650-memory-identity-final/memes
+QQ_MEMES_PATH=/opt/kinna-agent/memes
 ```
+
+表情包目录已**复制到项目内**（`/opt/kinna-agent/memes`，含 `astrbot-official-01/upstream`
+各分类和 `ip-selected`），不再依赖旧的发布目录——旧目录将来清掉也不影响。
 
 旧 `catalog.json` 的两种声明（`memes` 11 条 + `packs` 1 个）本项目都支持，格式无需转换。
 
@@ -101,8 +104,11 @@ QQ_MEMES_PATH=/opt/kinna-releases/20261108-133650-memory-identity-final/memes
 避开刚发的那张后: 换了          ← 去重逻辑在真实数据上有效
 ```
 
-**注意**：路径指向旧 bot 的发布目录，将来清理 `/opt/kinna-releases` 会让它失效。
-要长期稳定就把 `memes/` 复制到 `/opt/kinna-agent/memes` 并改这一行。
+复制后重新验证：
+
+```
+标签数: 21 | 挑图成功: astrbot-official-01/upstream/meow/file_5446957.jpg (77KB)
+```
 
 ## 已知未做
 
